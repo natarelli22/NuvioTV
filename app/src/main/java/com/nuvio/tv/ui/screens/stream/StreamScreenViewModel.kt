@@ -2082,13 +2082,7 @@ class StreamScreenViewModel @Inject constructor(
                 it.copy(
                     mediaRequesterStatus = MediaRequesterStatus.Level2Requested(
                         serverName = targetService,
-                        progressPercent = null,
-                        etaFormatted = null,
-                        dots = listOf(
-                            RequesterDot(R.string.requester_stepper_server, RequesterDotColor.GREEN),
-                            RequesterDot(R.string.requester_stepper_request, RequesterDotColor.YELLOW),
-                            RequesterDot(R.string.requester_stepper_availability, RequesterDotColor.GRAY)
-                        )
+                        phaseDescription = "Solicitando e buscando fontes..."
                     )
                 )
             }
@@ -2111,13 +2105,8 @@ class StreamScreenViewModel @Inject constructor(
                         it.copy(
                             mediaRequesterStatus = MediaRequesterStatus.Level3Unavailable(
                                 serverName = "Sonarr",
-                                reason = result.exceptionOrNull()?.localizedMessage ?: "Falha ao solicitar no Sonarr",
-                                canRetry = true,
-                                dots = listOf(
-                                    RequesterDot(R.string.requester_stepper_server, RequesterDotColor.GREEN),
-                                    RequesterDot(R.string.requester_stepper_request, RequesterDotColor.RED),
-                                    RequesterDot(R.string.requester_stepper_availability, RequesterDotColor.GRAY)
-                                )
+                                message = result.exceptionOrNull()?.localizedMessage ?: "Falha ao solicitar no Sonarr",
+                                canRetry = true
                             )
                         )
                     }
@@ -2137,13 +2126,8 @@ class StreamScreenViewModel @Inject constructor(
                         it.copy(
                             mediaRequesterStatus = MediaRequesterStatus.Level3Unavailable(
                                 serverName = "Radarr",
-                                reason = result.exceptionOrNull()?.localizedMessage ?: "Falha ao solicitar no Radarr",
-                                canRetry = true,
-                                dots = listOf(
-                                    RequesterDot(R.string.requester_stepper_server, RequesterDotColor.GREEN),
-                                    RequesterDot(R.string.requester_stepper_request, RequesterDotColor.RED),
-                                    RequesterDot(R.string.requester_stepper_availability, RequesterDotColor.GRAY)
-                                )
+                                message = result.exceptionOrNull()?.localizedMessage ?: "Falha ao solicitar no Radarr",
+                                canRetry = true
                             )
                         )
                     }

@@ -1,6 +1,8 @@
 package com.nuvio.tv.data.requester.model
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
+import com.nuvio.tv.R
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -19,7 +21,8 @@ enum class RequesterDotColor {
 @Immutable
 data class RequesterDot(
     val color: RequesterDotColor,
-    val label: String
+    val label: String = "",
+    @StringRes val labelRes: Int = 0
 )
 
 @Serializable
@@ -56,42 +59,55 @@ sealed class MediaRequesterStatus {
     data object Disabled : MediaRequesterStatus()
     data object Checking : MediaRequesterStatus()
 
+    open val dots: List<RequesterDot> get() = emptyList()
+
     /** Nível 1: Mídia ainda não solicitada no Sonarr/Radarr */
     data class Level1NotRequested(
         val serverName: String,
-        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Servidor"),
-        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GRAY, "Solicitação"),
-        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.GRAY, "Disponibilidade")
-    ) : MediaRequesterStatus()
+        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_server),
+        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GRAY, labelRes = R.string.requester_stepper_request),
+        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.GRAY, labelRes = R.string.requester_stepper_availability)
+    ) : MediaRequesterStatus() {
+        override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
+    }
 
     /** Nível 2: Conteúdo Solicitado (Buscando releases ou Baixando) */
     data class Level2Requested(
         val serverName: String,
-        val phaseDescription: String,
+        val phaseDescription: String = "",
         val progressPercent: Int? = null,
         val etaFormatted: String? = null,
         val sizeFormatted: String? = null,
-        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Servidor"),
-        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Solicitação"),
-        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.YELLOW, "Disponibilidade")
-    ) : MediaRequesterStatus()
+        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_server),
+        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_request),
+        val availabilityDot: RequesterDot = RequesterDot(
+            if (progressPercent != null) RequesterDotColor.YELLOW else RequesterDotColor.GRAY,
+            labelRes = R.string.requester_stepper_availability
+        )
+    ) : MediaRequesterStatus() {
+        override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
+    }
 
     /** Nível 3: Conteúdo Disponível na biblioteca */
     data class Level3Available(
         val serverName: String,
-        val message: String,
-        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Servidor"),
-        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Solicitação"),
-        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Disponibilidade")
-    ) : MediaRequesterStatus()
+        val message: String = "",
+        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_server),
+        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_request),
+        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_availability)
+    ) : MediaRequesterStatus() {
+        override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
+    }
 
     /** Nível 3: Conteúdo Indisponível ou Falha */
     data class Level3Unavailable(
         val serverName: String,
-        val message: String,
+        val message: String = "",
         val canRetry: Boolean = true,
-        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, "Servidor"),
-        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.RED, "Solicitação"),
-        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.GRAY, "Disponibilidade")
-    ) : MediaRequesterStatus()
+        val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_server),
+        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.RED, labelRes = R.string.requester_stepper_request),
+        val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.RED, labelRes = R.string.requester_stepper_availability)
+    ) : MediaRequesterStatus() {
+        override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
+    }
 }

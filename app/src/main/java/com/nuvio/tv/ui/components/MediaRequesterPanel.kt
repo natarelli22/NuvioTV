@@ -176,7 +176,7 @@ fun MediaRequesterPanel(
                             }
                         }
                         is MediaRequesterStatus.Level3Available -> stringResource(R.string.requester_status_level3_available_desc)
-                        is MediaRequesterStatus.Level3Unavailable -> status.reason
+                        is MediaRequesterStatus.Level3Unavailable -> status.message.ifBlank { stringResource(R.string.requester_status_level3_unavailable) }
                         MediaRequesterStatus.Disabled -> ""
                     }
 
@@ -249,15 +249,8 @@ fun MediaRequesterPanel(
             }
 
             // Stepper com as 3 bolinhas (o-o-o): Servidor, Solicitação, Disponibilidade
-            val dots = when (status) {
-                is MediaRequesterStatus.Level1NotRequested -> status.dots
-                is MediaRequesterStatus.Level2Requested -> status.dots
-                is MediaRequesterStatus.Level3Available -> status.dots
-                is MediaRequesterStatus.Level3Unavailable -> status.dots
-                else -> null
-            }
-
-            if (!dots.isNullOrEmpty()) {
+            val dots = status.dots
+            if (dots.isNotEmpty()) {
                 RequesterStepperRow(dots = dots)
             }
         }
@@ -290,8 +283,9 @@ private fun RequesterStepperRow(dots: List<RequesterDot>) {
                         .size(8.dp)
                         .background(dotColor, CircleShape)
                 )
+                val dotLabel = if (dot.labelRes != 0) stringResource(dot.labelRes) else dot.label
                 Text(
-                    text = stringResource(dot.labelRes),
+                    text = dotLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (dot.color == RequesterDotColor.GRAY) {
                         NuvioTheme.colors.TextSecondary.copy(alpha = 0.6f)
