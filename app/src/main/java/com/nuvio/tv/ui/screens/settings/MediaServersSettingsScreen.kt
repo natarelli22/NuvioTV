@@ -14,7 +14,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import com.nuvio.tv.data.requester.model.RequesterServerConfig
+import com.nuvio.tv.data.requester.model.RequesterType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +49,9 @@ internal fun MediaServersSettingsContent(
     viewModel: MediaServersViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val requesterPrefs by viewModel.requesterPrefs.collectAsStateWithLifecycle()
     var signIn by remember { mutableStateOf<ServerSignInRequest?>(null) }
+    var requesterDialogServer by remember { mutableStateOf<Pair<RequesterServerConfig?, RequesterType>?>(null) }
     val connections = uiState.connections
     val focusModifier = initialFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
 
@@ -97,6 +106,81 @@ internal fun MediaServersSettingsContent(
                             modifier = if (connections.isEmpty() && provider == viewModel.providers.first()) focusModifier else Modifier
                         )
                     }
+
+                    // --- CONTENT REQUESTER (SONARR & RADARR) ---
+                    item(key = "content_requester_label") {
+                        ServerSectionLabel(stringResource(R.string.settings_content_requester_title))
+                    }
+                    item(key = "content_requester_show_hide") {
+                        SettingsActionRow(
+                            title = if (requesterPrefs.isSectionVisible) {
+                                stringResource(R.string.settings_content_requester_hide)
+                            } else {
+                                stringResource(R.string.settings_content_requester_show)
+                            },
+                            subtitle = stringResource(R.string.settings_content_requester_subtitle),
+                            leadingIcon = if (requesterPrefs.isSectionVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            onClick = { viewModel.toggleContentRequesterVisibility() }
+                        )
+                    }
+
+                    if (requesterPrefs.isSectionVisible) {
+                        // SONARR (SÉRIES)
+                        item(key = "sonarr_toggle") {
+                            SettingsToggleRow(
+                                title = stringResource(R.string.requester_sonarr_title),
+                                subtitle = stringResource(R.string.requester_sonarr_description),
+                                checked = requesterPrefs.sonarrEnabled,
+                                onToggle = { viewModel.setSonarrEnabled(!requesterPrefs.sonarrEnabled) }
+                            )
+                        }
+                        if (requesterPrefs.sonarrEnabled) {
+                            items(requesterPrefs.sonarrServers, key = { "sonarr_${it.id}" }) { server ->
+                                SettingsActionRow(
+                                    title = server.name.ifBlank { stringResource(R.string.requester_default_sonarr_name) },
+                                    subtitle = server.url,
+                                    leadingIcon = Icons.Default.CloudDownload,
+                                    onClick = { requesterDialogServer = server to RequesterType.SONARR }
+                                )
+                            }
+                            item(key = "sonarr_add") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.requester_add_sonarr_server),
+                                    subtitle = stringResource(R.string.requester_add_server_hint),
+                                    leadingIcon = Icons.Default.Add,
+                                    onClick = { requesterDialogServer = null to RequesterType.SONARR }
+                                )
+                            }
+                        }
+
+                        // RADARR (FILMES)
+                        item(key = "radarr_toggle") {
+                            SettingsToggleRow(
+                                title = stringResource(R.string.requester_radarr_title),
+                                subtitle = stringResource(R.string.requester_radarr_description),
+                                checked = requesterPrefs.radarrEnabled,
+                                onToggle = { viewModel.setRadarrEnabled(!requesterPrefs.radarrEnabled) }
+                            )
+                        }
+                        if (requesterPrefs.radarrEnabled) {
+                            items(requesterPrefs.radarrServers, key = { "radarr_${it.id}" }) { server ->
+                                SettingsActionRow(
+                                    title = server.name.ifBlank { stringResource(R.string.requester_default_radarr_name) },
+                                    subtitle = server.url,
+                                    leadingIcon = Icons.Default.Movie,
+                                    onClick = { requesterDialogServer = server to RequesterType.RADARR }
+                                )
+                            }
+                            item(key = "radarr_add") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.requester_add_radarr_server),
+                                    subtitle = stringResource(R.string.requester_add_server_hint),
+                                    leadingIcon = Icons.Default.Add,
+                                    onClick = { requesterDialogServer = null to RequesterType.RADARR }
+                                )
+                            }
+                        }
+                    }
                 }
                 SettingsVerticalScrollIndicators(state = listState)
             }
@@ -112,6 +196,33 @@ internal fun MediaServersSettingsContent(
                 onOpenServer(connection.id)
             },
             onDismiss = { signIn = null }
+        )
+    }
+
+    requesterDialogServer?.let { (server, type) ->
+        RequesterServerDialog(
+            server = server,
+            type = type,
+            onTestConnection = { viewModel.testRequesterConnection(it) },
+            onSave = { saved ->
+                if (type == RequesterType.SONARR) {
+                    viewModel.saveSonarrServer(saved)
+                } else {
+                    viewModel.saveRadarrServer(saved)
+                }
+                requesterDialogServer = null
+            },
+            onDelete = if (server != null) {
+                { serverId ->
+                    if (type == RequesterType.SONARR) {
+                        viewModel.removeSonarrServer(serverId)
+                    } else {
+                        viewModel.removeRadarrServer(serverId)
+                    }
+                    requesterDialogServer = null
+                }
+            } else null,
+            onDismiss = { requesterDialogServer = null }
         )
     }
 }

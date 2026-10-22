@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.stream
 
+import com.nuvio.tv.data.requester.model.MediaRequesterStatus
 import com.nuvio.tv.domain.model.AddonStreams
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.ui.components.SourceChipItem
@@ -36,7 +37,9 @@ data class StreamScreenUiState(
     val autoPlayStream: Stream? = null,
     val autoPlayPlaybackInfo: StreamPlaybackInfo? = null,
     val error: String? = null,
-    val playbackErrorMessage: String? = null
+    val playbackErrorMessage: String? = null,
+    val mediaRequesterStatus: MediaRequesterStatus = MediaRequesterStatus.Disabled,
+    val isStreamsRefreshing: Boolean = false
 ) {
     val isEpisode: Boolean get() = season != null && episode != null
 }

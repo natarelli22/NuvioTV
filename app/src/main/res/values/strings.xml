@@ -3382,4 +3382,38 @@
     <string name="autosync_toast_failed_no_reference">Sync failed: this video has no embedded subtitles to compare with.</string>
     <string name="autosync_toast_failed_unsupported">Sync failed: Auto Sync doesn\'t support this subtitle format.</string>
     <string name="autosync_label_synced">Auto synced</string>
+
+    <!-- Content Requester (Sonarr & Radarr) -->
+    <string name="settings_content_requester_title">Content Requester</string>
+    <string name="settings_content_requester_subtitle">Configure Sonarr and Radarr integrations to request content</string>
+    <string name="settings_content_requester_show">Show Content Requester Settings</string>
+    <string name="settings_content_requester_hide">Hide Content Requester Settings</string>
+    <string name="requester_sonarr_title">Enable Sonarr (TV Shows)</string>
+    <string name="requester_sonarr_description">Automatically request and monitor TV series</string>
+    <string name="requester_radarr_title">Enable Radarr (Movies)</string>
+    <string name="requester_radarr_description">Automatically request and monitor movies</string>
+    <string name="requester_add_sonarr_server">Add Sonarr Server</string>
+    <string name="requester_add_radarr_server">Add Radarr Server</string>
+    <string name="requester_add_server_hint">Add address and API key</string>
+    <string name="requester_default_sonarr_name">Sonarr Server</string>
+    <string name="requester_default_radarr_name">Radarr Server</string>
+    <string name="requester_dialog_title_add">Add %1$s Server</string>
+    <string name="requester_dialog_title_edit">Edit %1$s Server</string>
+    <string name="requester_server_name">Server Name</string>
+    <string name="requester_server_name_hint">e.g. Primary Radarr</string>
+    <string name="requester_server_url">Server Address (URL)</string>
+    <string name="requester_server_url_hint">http://192.168.1.100:7878</string>
+    <string name="requester_server_apikey">API Key</string>
+    <string name="requester_server_apikey_hint">API Key from Settings > General</string>
+    <string name="requester_btn_test_save">Test &amp; Save</string>
+    <string name="requester_btn_delete">Delete Server</string>
+    <string name="requester_test_success">Connected successfully!</string>
+    <string name="requester_test_failed">Connection failed: %1$s</string>
+    <string name="requester_panel_title">Content Requester</string>
+    <string name="requester_panel_not_monitored">This item is not in your library.</string>
+    <string name="requester_panel_btn_request">Request with %1$s</string>
+    <string name="requester_panel_searching">Requested: Searching indexers for releases...</string>
+    <string name="requester_panel_downloading">Downloading in %1$s: %2$d%%</string>
+    <string name="requester_panel_eta">ETA: %1$s</string>
+    <string name="requester_panel_available">✓ Available in your local library!</string>
 </resources>

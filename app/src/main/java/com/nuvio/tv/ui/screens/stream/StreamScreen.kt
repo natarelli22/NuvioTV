@@ -92,7 +92,9 @@ import com.nuvio.tv.core.player.ExternalPlayerLauncher
 import com.nuvio.tv.core.streams.StreamBadgePlacement
 import com.nuvio.tv.core.streams.StreamBadgeSettings
 import com.nuvio.tv.data.local.PlayerPreference
+import com.nuvio.tv.data.requester.model.MediaRequesterStatus
 import com.nuvio.tv.domain.model.Stream
+import com.nuvio.tv.ui.components.MediaRequesterPanel
 import com.nuvio.tv.ui.components.SourceChipItem
 import com.nuvio.tv.ui.components.SourceChipStatus
 import com.nuvio.tv.ui.components.P2pConsentDialog
@@ -444,6 +446,9 @@ fun StreamScreen(
                 // Right side - Streams container
                 RightStreamSection(
                     isLoading = uiState.isLoading,
+                    mediaRequesterStatus = uiState.mediaRequesterStatus,
+                    isEpisode = uiState.isEpisode,
+                    onRequestMedia = { viewModel.requestCurrentMedia() },
                     error = uiState.error,
                     streams = uiState.filteredStreams,
                     availableAddons = uiState.availableAddons,
@@ -740,6 +745,9 @@ private fun LeftContentSection(
 @Composable
 private fun RightStreamSection(
     isLoading: Boolean,
+    mediaRequesterStatus: MediaRequesterStatus,
+    isEpisode: Boolean,
+    onRequestMedia: () -> Unit,
     error: String?,
     streams: List<Stream>,
     availableAddons: List<String>,
@@ -881,6 +889,18 @@ private fun RightStreamSection(
 
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
+        // Media Requester Window (Top)
+        if (mediaRequesterStatus !is MediaRequesterStatus.Disabled) {
+            MediaRequesterPanel(
+                status = mediaRequesterStatus,
+                isEpisode = isEpisode,
+                onRequest = onRequestMedia,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = NuvioTheme.spacing.md)
+            )
+        }
+
         androidx.compose.animation.AnimatedVisibility(
             visible = enter,
             enter = fadeIn(animationSpec = tween(260)) +
@@ -888,7 +908,10 @@ private fun RightStreamSection(
                     animationSpec = tween(260),
                     initialOffsetX = { fullWidth -> (fullWidth * 0.06f).toInt() }
                 ),
-            exit = fadeOut(animationSpec = tween(120))
+            exit = fadeOut(animationSpec = tween(120)),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
         ) {
             // Content area
             Box(

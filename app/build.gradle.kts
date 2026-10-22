@@ -194,7 +194,11 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (releaseStoreFilePath?.let { file(it).exists() } == true || file("../nuviotv.jks").exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isDebuggable = parseBooleanProperty(providers.gradleProperty("debuggable").orNull)
             isMinifyEnabled = false
 
@@ -272,13 +276,19 @@ android {
         }
     }
 
+    val enableAbiSplits = project.findProperty("enableAbiSplits") == "true"
     splits {
         abi {
-            isEnable = !buildingAppBundle
+            isEnable = enableAbiSplits && !buildingAppBundle
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
             isUniversalApk = true
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     bundle {

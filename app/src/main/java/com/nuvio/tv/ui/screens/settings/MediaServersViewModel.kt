@@ -9,12 +9,18 @@ import com.nuvio.tv.data.mediaserver.ServerProvider
 import com.nuvio.tv.data.mediaserver.ServerRepository
 import com.nuvio.tv.data.mediaserver.ServersUiState
 import com.nuvio.tv.data.mediaserver.serverFailure
+import com.nuvio.tv.data.local.ContentRequesterDataStore
+import com.nuvio.tv.data.requester.ContentRequesterService
+import com.nuvio.tv.data.requester.model.ContentRequesterPreferences
+import com.nuvio.tv.data.requester.model.RequesterServerConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class ServerSignInState(
@@ -24,9 +30,18 @@ data class ServerSignInState(
 
 @HiltViewModel
 class MediaServersViewModel @Inject constructor(
-    private val repository: ServerRepository
+    private val repository: ServerRepository,
+    private val requesterDataStore: ContentRequesterDataStore,
+    private val requesterService: ContentRequesterService
 ) : ViewModel() {
     val uiState: StateFlow<ServersUiState> = repository.uiState
+
+    val requesterPrefs: StateFlow<ContentRequesterPreferences> = requesterDataStore.preferences
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ContentRequesterPreferences()
+        )
 
     val providers: List<ServerProvider>
         get() = repository.providers
@@ -39,6 +54,52 @@ class MediaServersViewModel @Inject constructor(
 
     init {
         repository.ensureLoaded()
+    }
+
+    fun toggleContentRequesterVisibility() {
+        viewModelScope.launch {
+            requesterDataStore.setSectionVisible(!requesterPrefs.value.isSectionVisible)
+        }
+    }
+
+    fun setSonarrEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            requesterDataStore.setSonarrEnabled(enabled)
+        }
+    }
+
+    fun setRadarrEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            requesterDataStore.setRadarrEnabled(enabled)
+        }
+    }
+
+    fun saveSonarrServer(server: RequesterServerConfig) {
+        viewModelScope.launch {
+            requesterDataStore.saveSonarrServer(server)
+        }
+    }
+
+    fun removeSonarrServer(serverId: String) {
+        viewModelScope.launch {
+            requesterDataStore.removeSonarrServer(serverId)
+        }
+    }
+
+    fun saveRadarrServer(server: RequesterServerConfig) {
+        viewModelScope.launch {
+            requesterDataStore.saveRadarrServer(server)
+        }
+    }
+
+    fun removeRadarrServer(serverId: String) {
+        viewModelScope.launch {
+            requesterDataStore.removeRadarrServer(serverId)
+        }
+    }
+
+    suspend fun testRequesterConnection(server: RequesterServerConfig): Result<Boolean> {
+        return requesterService.testConnection(server)
     }
 
     fun provider(connection: ServerConnection): ServerProvider? = repository.provider(connection)

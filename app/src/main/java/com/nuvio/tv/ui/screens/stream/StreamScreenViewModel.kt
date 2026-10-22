@@ -37,6 +37,9 @@ import com.nuvio.tv.data.mediaserver.ServerPlayback
 import com.nuvio.tv.data.mediaserver.ServerPlaybackTarget
 import com.nuvio.tv.data.mediaserver.ServerStreams
 import com.nuvio.tv.data.mediaserver.serverPlaybackMessageRes
+import com.nuvio.tv.data.local.ContentRequesterDataStore
+import com.nuvio.tv.data.requester.ContentRequesterService
+import com.nuvio.tv.data.requester.model.MediaRequesterStatus
 import com.nuvio.tv.domain.model.AddonStreams
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.Stream
@@ -100,6 +103,8 @@ class StreamScreenViewModel @Inject constructor(
     private val externalPlaybackTracker: com.nuvio.tv.core.player.ExternalPlaybackTracker,
     private val subtitleRepository: com.nuvio.tv.domain.repository.SubtitleRepository,
     private val subtitleFileCache: com.nuvio.tv.core.player.SubtitleFileCache,
+    private val contentRequesterDataStore: ContentRequesterDataStore,
+    private val contentRequesterService: ContentRequesterService,
     private val torrentService: TorrentService,
     private val serverStreams: ServerStreams,
     private val serverPlayback: ServerPlayback,
@@ -122,6 +127,7 @@ class StreamScreenViewModel @Inject constructor(
     private var streamBadgePresentationRequestId = 0L
     private var badgedAddonNames: Set<String> = emptySet()
     private var playbackMetaVideos: List<Video>? = null
+    private var mediaRequesterPollingJob: Job? = null
 
     private val embeddedStreamGroupName: String by lazy {
         context.getString(R.string.stream_embedded_group)
@@ -299,6 +305,7 @@ class StreamScreenViewModel @Inject constructor(
         }
         loadMissingMetaDetailsIfNeeded()
         loadStreams()
+        checkMediaRequesterStatus()
     }
 
     private fun SavedStateHandle.getOptionalString(key: String): String? {
@@ -652,6 +659,7 @@ class StreamScreenViewModel @Inject constructor(
                 updateUiStateIfChanged {
                     it.copy(
                         isLoading = false,
+                        isStreamsRefreshing = false,
                         addonStreams = mergedAddonStreams,
                         allStreams = allStreams,
                         filteredStreams = paginatedStreams,
@@ -1609,6 +1617,7 @@ class StreamScreenViewModel @Inject constructor(
             isTorrentStreamStarted = false
         }
         externalOverlayHideJob?.cancel()
+        mediaRequesterPollingJob?.cancel()
         streamLoadScope?.cancel()
         streamLoadScope = null
         streamLoadJob = null
@@ -2043,6 +2052,159 @@ class StreamScreenViewModel @Inject constructor(
         }
     }
 
+    fun requestCurrentMedia() {
+        viewModelScope.launch {
+            val prefs = contentRequesterDataStore.preferences.first()
+            val isEp = season != null && episode != null
+            val imdbId = if (videoId.startsWith("tt")) videoId.substringBefore(":") else (contentId?.takeIf { it.startsWith("tt") })
+            val tmdbId = if (videoId.startsWith("tmdb:")) videoId.substringAfter("tmdb:").substringBefore(":") else null
+            val tvdbId = if (videoId.startsWith("tvdb:") || videoId.startsWith("kitsu:")) videoId.substringAfter(":").substringBefore(":") else null
+
+            if (isEp) {
+                val s = season ?: 1
+                val e = episode ?: 1
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.MonitoredSearching("Sonarr")) }
+                val result = contentRequesterService.requestEpisode(
+                    servers = prefs.sonarrServers,
+                    imdbId = imdbId,
+                    tvdbId = tvdbId,
+                    seriesTitle = title,
+                    season = s,
+                    episode = e
+                )
+                if (result.isSuccess) {
+                    startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, s, e)
+                } else {
+                    updateUiStateIfChanged {
+                        it.copy(mediaRequesterStatus = MediaRequesterStatus.Error(result.exceptionOrNull()?.localizedMessage ?: "Erro ao requisitar no Sonarr"))
+                    }
+                }
+            } else {
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.MonitoredSearching("Radarr")) }
+                val result = contentRequesterService.requestMovie(
+                    servers = prefs.radarrServers,
+                    imdbId = imdbId,
+                    tmdbId = tmdbId,
+                    title = title,
+                    year = year
+                )
+                if (result.isSuccess) {
+                    startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, null, null)
+                } else {
+                    updateUiStateIfChanged {
+                        it.copy(mediaRequesterStatus = MediaRequesterStatus.Error(result.exceptionOrNull()?.localizedMessage ?: "Erro ao requisitar no Radarr"))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkMediaRequesterStatus() {
+        viewModelScope.launch {
+            val prefs = contentRequesterDataStore.preferences.first()
+            val isEp = season != null && episode != null
+
+            val applicable = if (isEp) {
+                prefs.sonarrEnabled && prefs.sonarrServers.any { it.enabled }
+            } else {
+                prefs.radarrEnabled && prefs.radarrServers.any { it.enabled }
+            }
+
+            if (!applicable) {
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                return@launch
+            }
+
+            updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Checking) }
+
+            val imdbId = if (videoId.startsWith("tt")) videoId.substringBefore(":") else (contentId?.takeIf { it.startsWith("tt") })
+            val tmdbId = if (videoId.startsWith("tmdb:")) videoId.substringAfter("tmdb:").substringBefore(":") else null
+            val tvdbId = if (videoId.startsWith("tvdb:") || videoId.startsWith("kitsu:")) videoId.substringAfter(":").substringBefore(":") else null
+
+            val currentStatus = if (isEp) {
+                val s = season ?: 1
+                val e = episode ?: 1
+                contentRequesterService.checkEpisodeStatus(
+                    servers = prefs.sonarrServers,
+                    imdbId = imdbId,
+                    tvdbId = tvdbId,
+                    seriesTitle = title,
+                    season = s,
+                    episode = e
+                )
+            } else {
+                contentRequesterService.checkMovieStatus(
+                    servers = prefs.radarrServers,
+                    imdbId = imdbId,
+                    tmdbId = tmdbId,
+                    title = title
+                )
+            }
+
+            updateUiStateIfChanged { it.copy(mediaRequesterStatus = currentStatus) }
+
+            if (currentStatus is MediaRequesterStatus.Downloading || currentStatus is MediaRequesterStatus.MonitoredSearching) {
+                startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, season, episode)
+            }
+        }
+    }
+
+    private fun startMediaRequesterPolling(
+        isEp: Boolean,
+        imdbId: String?,
+        tmdbId: String?,
+        tvdbId: String?,
+        season: Int?,
+        episode: Int?
+    ) {
+        mediaRequesterPollingJob?.cancel()
+        mediaRequesterPollingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(4000)
+                val prefs = contentRequesterDataStore.preferences.first()
+                val status = if (isEp) {
+                    contentRequesterService.checkEpisodeStatus(
+                        servers = prefs.sonarrServers,
+                        imdbId = imdbId,
+                        tvdbId = tvdbId,
+                        seriesTitle = title,
+                        season = season ?: 1,
+                        episode = episode ?: 1
+                    )
+                } else {
+                    contentRequesterService.checkMovieStatus(
+                        servers = prefs.radarrServers,
+                        imdbId = imdbId,
+                        tmdbId = tmdbId,
+                        title = title
+                    )
+                }
+
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = status) }
+
+                if (status is MediaRequesterStatus.Available) {
+                    // Download concluído! Dispara refresh exclusivo da lista de streams
+                    refreshStreamsOnly()
+                    break
+                } else if (status is MediaRequesterStatus.Error || status is MediaRequesterStatus.Disabled) {
+                    break
+                }
+            }
+        }
+    }
+
+    fun refreshStreamsOnly() {
+        viewModelScope.launch {
+            updateUiStateIfChanged {
+                it.copy(
+                    isStreamsRefreshing = true,
+                    selectedAddonFilter = null,
+                    filteredStreams = emptyList()
+                )
+            }
+            loadStreams(forceRefresh = true)
+        }
+    }
 }
 
 private fun Stream.badgeMergeKey(): String {
