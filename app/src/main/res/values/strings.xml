@@ -3386,15 +3386,13 @@
     <!-- Content Requester (Sonarr & Radarr) -->
     <string name="settings_content_requester_title">Content Requester</string>
     <string name="settings_content_requester_subtitle">Configure Sonarr and Radarr integrations to request content</string>
-    <string name="settings_content_requester_show">Show Content Requester Settings</string>
-    <string name="settings_content_requester_hide">Hide Content Requester Settings</string>
     <string name="requester_sonarr_title">Enable Sonarr (TV Shows)</string>
     <string name="requester_sonarr_description">Automatically request and monitor TV series</string>
     <string name="requester_radarr_title">Enable Radarr (Movies)</string>
     <string name="requester_radarr_description">Automatically request and monitor movies</string>
     <string name="requester_add_sonarr_server">Add Sonarr Server</string>
     <string name="requester_add_radarr_server">Add Radarr Server</string>
-    <string name="requester_add_server_hint">Add address and API key</string>
+    <string name="requester_add_server_hint">Enter server address and login credentials</string>
     <string name="requester_default_sonarr_name">Sonarr Server</string>
     <string name="requester_default_radarr_name">Radarr Server</string>
     <string name="requester_dialog_title_add">Add %1$s Server</string>
@@ -3403,8 +3401,12 @@
     <string name="requester_server_name_hint">e.g. Primary Radarr</string>
     <string name="requester_server_url">Server Address (URL)</string>
     <string name="requester_server_url_hint">http://192.168.1.100:7878</string>
+    <string name="requester_server_username">Username</string>
+    <string name="requester_server_username_hint">Leave blank if no login required</string>
+    <string name="requester_server_password">Password</string>
+    <string name="requester_server_password_hint">Leave blank if no login required</string>
     <string name="requester_server_apikey">API Key</string>
-    <string name="requester_server_apikey_hint">API Key from Settings > General</string>
+    <string name="requester_server_apikey_hint">Resolved automatically via login</string>
     <string name="requester_btn_test_save">Test &amp; Save</string>
     <string name="requester_btn_delete">Delete Server</string>
     <string name="requester_test_success">Connected successfully!</string>
@@ -3416,4 +3418,14 @@
     <string name="requester_panel_downloading">Downloading in %1$s: %2$d%%</string>
     <string name="requester_panel_eta">ETA: %1$s</string>
     <string name="requester_panel_available">✓ Available in your local library!</string>
+    <string name="requester_stepper_server">Server</string>
+    <string name="requester_stepper_request">Request</string>
+    <string name="requester_stepper_availability">Availability</string>
+    <string name="requester_status_level1">Request Content</string>
+    <string name="requester_status_level1_desc">This item is not in your local library. Request download with %1$s.</string>
+    <string name="requester_status_level2">Content Requested</string>
+    <string name="requester_status_level3_available">Content Available</string>
+    <string name="requester_status_level3_available_desc">Available in your local library! Stream list refreshed.</string>
+    <string name="requester_status_level3_unavailable">Content Unavailable</string>
+    <string name="requester_btn_retry">Try Again</string>
 </resources>

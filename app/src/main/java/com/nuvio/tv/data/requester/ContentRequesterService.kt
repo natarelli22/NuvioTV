@@ -1,10 +1,14 @@
 package com.nuvio.tv.data.requester
 
+import android.util.Base64
 import android.util.Log
 import com.nuvio.tv.data.requester.model.MediaRequesterStatus
+import com.nuvio.tv.data.requester.model.RequesterDot
+import com.nuvio.tv.data.requester.model.RequesterDotColor
 import com.nuvio.tv.data.requester.model.RequesterServerConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,7 +16,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -28,28 +31,135 @@ class ContentRequesterService @Inject constructor(
     private fun normalizeUrl(url: String): String =
         url.trim().trimEnd('/')
 
-    suspend fun testConnection(server: RequesterServerConfig): Result<Boolean> = withContext(Dispatchers.IO) {
+    /**
+     * Testa e resolve as credenciais do servidor Sonarr ou Radarr.
+     * Suporta:
+     * 1. Login por Usuário e Senha (Web UI Form Login + captura de cookie + extração de apiKey).
+     * 2. HTTP Basic Auth com Usuário e Senha.
+     * 3. Conexão direta sem autenticação (AuthenticationMethod: None).
+     * 4. API Key direta previamente resolvida.
+     *
+     * Retorna a apiKey obtida ou confirmação de sucesso.
+     */
+    suspend fun testAndResolveCredentials(server: RequesterServerConfig): Result<String> = withContext(Dispatchers.IO) {
         val baseUrl = normalizeUrl(server.url)
-        if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("URL inválida"))
-        val endpoint = "$baseUrl/api/v3/system/status"
-        try {
-            val request = Request.Builder()
-                .url(endpoint)
+        if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("Endereço do servidor inválido"))
+
+        // 1. Se já tiver apiKey salva, testa diretamente
+        if (server.apiKey.isNotBlank()) {
+            val statusReq = Request.Builder()
+                .url("$baseUrl/api/v3/system/status")
                 .header("X-Api-Key", server.apiKey.trim())
                 .get()
                 .build()
+            val resp = runCatching { okHttpClient.newCall(statusReq).execute() }.getOrNull()
+            if (resp != null && resp.isSuccessful) {
+                return@withContext Result.success(server.apiKey.trim())
+            }
+        }
 
-            val response = okHttpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                Result.success(true)
-            } else {
-                Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+        // 2. Se usuário e senha foram fornecidos: Tenta login via Form (/login)
+        if (server.username.isNotBlank() && server.password.isNotBlank()) {
+            try {
+                val formBody = FormBody.Builder()
+                    .add("username", server.username.trim())
+                    .add("password", server.password)
+                    .add("rememberMe", "true")
+                    .build()
+
+                val loginReq = Request.Builder()
+                    .url("$baseUrl/login")
+                    .post(formBody)
+                    .build()
+
+                val loginResp = okHttpClient.newCall(loginReq).execute()
+                val cookies = loginResp.headers.values("Set-Cookie")
+                val cookieHeader = cookies.joinToString("; ") { it.substringBefore(';') }
+
+                // Se o login tiver sucesso (200 OK ou redirecionamento 302/303)
+                if (loginResp.isSuccessful || loginResp.isRedirect) {
+                    val hostReq = Request.Builder()
+                        .url("$baseUrl/api/v3/config/host")
+                        .apply {
+                            if (cookieHeader.isNotBlank()) header("Cookie", cookieHeader)
+                        }
+                        .get()
+                        .build()
+
+                    val hostResp = okHttpClient.newCall(hostReq).execute()
+                    if (hostResp.isSuccessful) {
+                        val body = hostResp.body?.string().orEmpty()
+                        val json = JSONObject(body)
+                        val key = json.optString("apiKey")
+                        if (key.isNotBlank()) {
+                            return@withContext Result.success(key)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Tentativa de login via /login falhou: ${e.message}")
+            }
+
+            // 3. Fallback: Tenta HTTP Basic Auth caso o servidor use Basic
+            try {
+                val credentials = Base64.encodeToString(
+                    "${server.username.trim()}:${server.password}".toByteArray(),
+                    Base64.NO_WRAP
+                )
+                val basicReq = Request.Builder()
+                    .url("$baseUrl/api/v3/config/host")
+                    .header("Authorization", "Basic $credentials")
+                    .get()
+                    .build()
+
+                val basicResp = okHttpClient.newCall(basicReq).execute()
+                if (basicResp.isSuccessful) {
+                    val body = basicResp.body?.string().orEmpty()
+                    val json = JSONObject(body)
+                    val key = json.optString("apiKey")
+                    if (key.isNotBlank()) {
+                        return@withContext Result.success(key)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Tentativa de Basic Auth falhou: ${e.message}")
+            }
+        }
+
+        // 4. Sem autenticação (None): tenta obter apiKey de /api/v3/config/host diretamente
+        try {
+            val noneReq = Request.Builder()
+                .url("$baseUrl/api/v3/config/host")
+                .get()
+                .build()
+            val noneResp = okHttpClient.newCall(noneReq).execute()
+            if (noneResp.isSuccessful) {
+                val body = noneResp.body?.string().orEmpty()
+                val json = JSONObject(body)
+                val key = json.optString("apiKey")
+                if (key.isNotBlank()) {
+                    return@withContext Result.success(key)
+                }
+            }
+
+            // Testa status sem auth
+            val statusReq = Request.Builder()
+                .url("$baseUrl/api/v3/system/status")
+                .get()
+                .build()
+            val statusResp = okHttpClient.newCall(statusReq).execute()
+            if (statusResp.isSuccessful) {
+                return@withContext Result.success("")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Falha ao testar conexão com $baseUrl", e)
-            Result.failure(e)
+            Log.w(TAG, "Tentativa sem autenticação falhou: ${e.message}")
         }
+
+        Result.failure(Exception("Não foi possível conectar. Verifique o endereço, usuário e senha."))
     }
+
+    suspend fun testConnection(server: RequesterServerConfig): Result<Boolean> =
+        testAndResolveCredentials(server).map { true }
 
     // =========================================================================
     // RADARR (FILMES)
@@ -77,7 +187,8 @@ class ContentRequesterService @Inject constructor(
             if (libraryStatus != null) return@withContext libraryStatus
         }
 
-        MediaRequesterStatus.NotMonitored
+        val primaryServerName = enabledServers.firstOrNull()?.name?.ifBlank { "Radarr" } ?: "Radarr"
+        MediaRequesterStatus.Level1NotRequested(serverName = primaryServerName)
     }
 
     private fun checkRadarrQueue(
@@ -116,12 +227,12 @@ class ContentRequesterService @Inject constructor(
                     val sizeleft = record.optDouble("sizeleft", 0.0).toLong()
                     val percent = if (size > 0) (((size - sizeleft) * 100) / size).toInt().coerceIn(0, 100) else null
                     val timeleft = record.optString("timeleft").takeIf { it.isNotBlank() }
-                    return MediaRequesterStatus.Downloading(
-                        serverName = serverName,
+                    return MediaRequesterStatus.Level2Requested(
+                        serverName = serverName.ifBlank { "Radarr" },
+                        phaseDescription = "Baixando no cliente...",
                         progressPercent = percent,
-                        sizeLeftBytes = sizeleft,
-                        totalSizeBytes = size,
-                        etaFormatted = timeleft
+                        etaFormatted = timeleft,
+                        sizeFormatted = formatBytes(size)
                     )
                 }
             }
@@ -166,12 +277,19 @@ class ContentRequesterService @Inject constructor(
             val isMonitored = movieObj.optBoolean("monitored", false)
             val id = movieObj.optInt("id", 0)
 
+            val name = serverName.ifBlank { "Radarr" }
             if (hasFile) {
-                MediaRequesterStatus.Available(serverName)
+                MediaRequesterStatus.Level3Available(
+                    serverName = name,
+                    message = "Disponível na sua biblioteca local"
+                )
             } else if (id > 0 && isMonitored) {
-                MediaRequesterStatus.MonitoredSearching(serverName)
+                MediaRequesterStatus.Level2Requested(
+                    serverName = name,
+                    phaseDescription = "Pesquisando releases nos indexadores..."
+                )
             } else {
-                MediaRequesterStatus.NotMonitored
+                MediaRequesterStatus.Level1NotRequested(serverName = name)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Erro ao checar biblioteca Radarr ($baseUrl): ${e.message}")
@@ -193,7 +311,6 @@ class ContentRequesterService @Inject constructor(
         val apiKey = server.apiKey.trim()
 
         try {
-            // 1. Lookup do filme para obter metadados do Radarr
             val lookupUrl = when {
                 !tmdbId.isNullOrBlank() -> "$baseUrl/api/v3/movie/lookup/tmdb?tmdbId=$tmdbId"
                 !imdbId.isNullOrBlank() -> "$baseUrl/api/v3/movie/lookup/imdb?imdbId=$imdbId"
@@ -217,7 +334,6 @@ class ContentRequesterService @Inject constructor(
 
             val existingId = moviePayload.optInt("id", 0)
             if (existingId > 0) {
-                // Já existe no Radarr: Dispara comando de busca
                 val cmdBody = JSONObject().apply {
                     put("name", "MoviesSearch")
                     put("movieIds", JSONArray().put(existingId))
@@ -234,8 +350,6 @@ class ContentRequesterService @Inject constructor(
                     Result.failure(Exception("Erro ao disparar busca no Radarr: HTTP ${cmdResp.code}"))
                 }
             } else {
-                // Não existe: Adiciona e inicia busca
-                // Obtém rootFolderPath e qualityProfileId padrões do Radarr
                 val rootFolder = getRadarrRootFolder(baseUrl, apiKey) ?: "/data/media/movies"
                 val qualityProfileId = getRadarrQualityProfile(baseUrl, apiKey) ?: 1
 
@@ -312,7 +426,8 @@ class ContentRequesterService @Inject constructor(
             if (libraryStatus != null) return@withContext libraryStatus
         }
 
-        MediaRequesterStatus.NotMonitored
+        val primaryServerName = enabledServers.firstOrNull()?.name?.ifBlank { "Sonarr" } ?: "Sonarr"
+        MediaRequesterStatus.Level1NotRequested(serverName = primaryServerName)
     }
 
     private fun checkSonarrQueue(
@@ -345,12 +460,12 @@ class ContentRequesterService @Inject constructor(
                     val sizeleft = record.optDouble("sizeleft", 0.0).toLong()
                     val percent = if (size > 0) (((size - sizeleft) * 100) / size).toInt().coerceIn(0, 100) else null
                     val timeleft = record.optString("timeleft").takeIf { it.isNotBlank() }
-                    return MediaRequesterStatus.Downloading(
-                        serverName = serverName,
+                    return MediaRequesterStatus.Level2Requested(
+                        serverName = serverName.ifBlank { "Sonarr" },
+                        phaseDescription = "Baixando no cliente...",
                         progressPercent = percent,
-                        sizeLeftBytes = sizeleft,
-                        totalSizeBytes = size,
-                        etaFormatted = timeleft
+                        etaFormatted = timeleft,
+                        sizeFormatted = formatBytes(size)
                     )
                 }
             }
@@ -387,43 +502,25 @@ class ContentRequesterService @Inject constructor(
                 if (epObj.optInt("episodeNumber") == episode) {
                     val hasFile = epObj.optBoolean("hasFile", false)
                     val isMonitored = epObj.optBoolean("monitored", false)
+                    val name = serverName.ifBlank { "Sonarr" }
                     return when {
-                        hasFile -> MediaRequesterStatus.Available(serverName)
-                        isMonitored -> MediaRequesterStatus.MonitoredSearching(serverName)
-                        else -> MediaRequesterStatus.NotMonitored
+                        hasFile -> MediaRequesterStatus.Level3Available(
+                            serverName = name,
+                            message = "Disponível na sua biblioteca local"
+                        )
+                        isMonitored -> MediaRequesterStatus.Level2Requested(
+                            serverName = name,
+                            phaseDescription = "Pesquisando releases nos indexadores..."
+                        )
+                        else -> MediaRequesterStatus.Level1NotRequested(serverName = name)
                     }
                 }
             }
-            MediaRequesterStatus.NotMonitored
+            MediaRequesterStatus.Level1NotRequested(serverName = serverName.ifBlank { "Sonarr" })
         } catch (e: Exception) {
             Log.w(TAG, "Erro ao checar biblioteca Sonarr ($baseUrl): ${e.message}")
             null
         }
-    }
-
-    private fun resolveSonarrSeriesId(
-        baseUrl: String,
-        apiKey: String,
-        imdbId: String?,
-        tvdbId: String?,
-        seriesTitle: String?
-    ): Int? {
-        return try {
-            val lookupUrl = when {
-                !tvdbId.isNullOrBlank() -> "$baseUrl/api/v3/series/lookup?term=tvdb:$tvdbId"
-                !imdbId.isNullOrBlank() -> "$baseUrl/api/v3/series/lookup?term=imdb:$imdbId"
-                !seriesTitle.isNullOrBlank() -> "$baseUrl/api/v3/series/lookup?term=${URLEncoder.encode(seriesTitle, "UTF-8")}"
-                else -> return null
-            }
-            val req = Request.Builder().url(lookupUrl).header("X-Api-Key", apiKey).get().build()
-            val resp = okHttpClient.newCall(req).execute()
-            if (!resp.isSuccessful) return null
-            val array = JSONArray(resp.body?.string().orEmpty())
-            if (array.length() == 0) return null
-            val seriesObj = array.getJSONObject(0)
-            val id = seriesObj.optInt("id", 0)
-            if (id > 0) id else null
-        } catch (_: Exception) { null }
     }
 
     suspend fun requestEpisode(
@@ -441,28 +538,26 @@ class ContentRequesterService @Inject constructor(
         val apiKey = server.apiKey.trim()
 
         try {
-            // 1. Resolver Série
-            val lookupUrl = when {
-                !tvdbId.isNullOrBlank() -> "$baseUrl/api/v3/series/lookup?term=tvdb:$tvdbId"
-                !imdbId.isNullOrBlank() -> "$baseUrl/api/v3/series/lookup?term=imdb:$imdbId"
-                !seriesTitle.isNullOrBlank() -> "$baseUrl/api/v3/series/lookup?term=${URLEncoder.encode(seriesTitle, "UTF-8")}"
-                else -> return@withContext Result.failure(IllegalArgumentException("Metadados insuficientes"))
-            }
+            var seriesId = resolveSonarrSeriesId(baseUrl, apiKey, imdbId, tvdbId, seriesTitle)
 
-            val lookupReq = Request.Builder().url(lookupUrl).header("X-Api-Key", apiKey).get().build()
-            val lookupResp = okHttpClient.newCall(lookupReq).execute()
-            if (!lookupResp.isSuccessful) {
-                return@withContext Result.failure(Exception("Sonarr lookup falhou: HTTP ${lookupResp.code}"))
-            }
-            val array = JSONArray(lookupResp.body?.string().orEmpty())
-            if (array.length() == 0) {
-                return@withContext Result.failure(Exception("Série não encontrada no Sonarr"))
-            }
-            val seriesPayload = array.getJSONObject(0)
-            var seriesId = seriesPayload.optInt("id", 0)
+            if (seriesId == null) {
+                val lookupTerm = when {
+                    !tvdbId.isNullOrBlank() -> "tvdb:$tvdbId"
+                    !imdbId.isNullOrBlank() -> "imdb:$imdbId"
+                    !seriesTitle.isNullOrBlank() -> seriesTitle
+                    else -> return@withContext Result.failure(IllegalArgumentException("Metadados insuficientes"))
+                }
+                val lookupUrl = "$baseUrl/api/v3/series/lookup?term=${URLEncoder.encode(lookupTerm, "UTF-8")}"
+                val lookupReq = Request.Builder().url(lookupUrl).header("X-Api-Key", apiKey).get().build()
+                val lookupResp = okHttpClient.newCall(lookupReq).execute()
+                if (!lookupResp.isSuccessful) {
+                    return@withContext Result.failure(Exception("Sonarr lookup falhou: HTTP ${lookupResp.code}"))
+                }
+                val lookupBody = lookupResp.body?.string().orEmpty()
+                val array = JSONArray(lookupBody)
+                if (array.length() == 0) return@withContext Result.failure(Exception("Série não encontrada no Sonarr"))
+                val seriesPayload = array.getJSONObject(0)
 
-            if (seriesId == 0) {
-                // Adiciona série no Sonarr
                 val rootFolder = getSonarrRootFolder(baseUrl, apiKey) ?: "/data/media/tv"
                 val qualityProfileId = getSonarrQualityProfile(baseUrl, apiKey) ?: 1
 
@@ -482,54 +577,81 @@ class ContentRequesterService @Inject constructor(
                 if (!addResp.isSuccessful) {
                     return@withContext Result.failure(Exception("Erro ao adicionar série no Sonarr: HTTP ${addResp.code}"))
                 }
-                val createdSeries = JSONObject(addResp.body?.string().orEmpty())
-                seriesId = createdSeries.optInt("id", 0)
+                val addedObj = JSONObject(addResp.body?.string().orEmpty())
+                seriesId = addedObj.optInt("id")
             }
 
-            // 2. Localizar o Episode ID
+            // Busca o ID específico do episódio
             val epReq = Request.Builder()
                 .url("$baseUrl/api/v3/episode?seriesId=$seriesId&seasonNumber=$season")
                 .header("X-Api-Key", apiKey)
                 .get()
                 .build()
             val epResp = okHttpClient.newCall(epReq).execute()
-            if (!epResp.isSuccessful) {
-                return@withContext Result.failure(Exception("Erro ao consultar episódios: HTTP ${epResp.code}"))
-            }
+            if (!epResp.isSuccessful) return@withContext Result.failure(Exception("Erro ao listar episódios"))
             val epArray = JSONArray(epResp.body?.string().orEmpty())
-            var episodeId: Int? = null
+
+            var targetEpisodeId: Int? = null
             for (i in 0 until epArray.length()) {
                 val epObj = epArray.getJSONObject(i)
                 if (epObj.optInt("episodeNumber") == episode) {
-                    episodeId = epObj.optInt("id")
+                    targetEpisodeId = epObj.optInt("id")
                     break
                 }
             }
 
-            if (episodeId == null) {
-                return@withContext Result.failure(Exception("Episódio S${season}E${episode} não encontrado na série"))
-            }
-
-            // 3. Disparar Comando de Busca para o Episódio
-            val cmdBody = JSONObject().apply {
-                put("name", "EpisodeSearch")
-                put("episodeIds", JSONArray().put(episodeId))
-            }
-            val cmdReq = Request.Builder()
-                .url("$baseUrl/api/v3/command")
-                .header("X-Api-Key", apiKey)
-                .post(cmdBody.toString().toRequestBody(JSON_MEDIA_TYPE))
-                .build()
-            val cmdResp = okHttpClient.newCall(cmdReq).execute()
-            if (cmdResp.isSuccessful) {
-                Result.success("Busca iniciada para S${season}E${episode} no Sonarr!")
+            if (targetEpisodeId != null) {
+                val cmdBody = JSONObject().apply {
+                    put("name", "EpisodeSearch")
+                    put("episodeIds", JSONArray().put(targetEpisodeId))
+                }
+                val cmdReq = Request.Builder()
+                    .url("$baseUrl/api/v3/command")
+                    .header("X-Api-Key", apiKey)
+                    .post(cmdBody.toString().toRequestBody(JSON_MEDIA_TYPE))
+                    .build()
+                val cmdResp = okHttpClient.newCall(cmdReq).execute()
+                if (cmdResp.isSuccessful) {
+                    Result.success("Busca do episódio iniciada no Sonarr!")
+                } else {
+                    Result.failure(Exception("Erro ao disparar busca do episódio: HTTP ${cmdResp.code}"))
+                }
             } else {
-                Result.failure(Exception("Erro ao disparar busca no Sonarr: HTTP ${cmdResp.code}"))
+                Result.failure(Exception("Episódio S${season}E${episode} não encontrado na série."))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao requisitar episódio no Sonarr", e)
             Result.failure(e)
         }
+    }
+
+    private fun resolveSonarrSeriesId(
+        baseUrl: String,
+        apiKey: String,
+        imdbId: String?,
+        tvdbId: String?,
+        seriesTitle: String?
+    ): Int? {
+        return try {
+            val req = Request.Builder().url("$baseUrl/api/v3/series").header("X-Api-Key", apiKey).get().build()
+            val resp = okHttpClient.newCall(req).execute()
+            if (!resp.isSuccessful) return null
+            val array = JSONArray(resp.body?.string().orEmpty())
+
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val itemImdb = item.optString("imdbId")
+                val itemTvdb = item.optInt("tvdbId", -1).toString()
+                val itemTitle = item.optString("title")
+
+                val matches = (imdbId != null && itemImdb.equals(imdbId, ignoreCase = true)) ||
+                    (tvdbId != null && itemTvdb == tvdbId) ||
+                    (seriesTitle != null && itemTitle.contains(seriesTitle, ignoreCase = true))
+
+                if (matches) return item.optInt("id")
+            }
+            null
+        } catch (_: Exception) { null }
     }
 
     private fun getSonarrRootFolder(baseUrl: String, apiKey: String): String? {
@@ -550,5 +672,13 @@ class ContentRequesterService @Inject constructor(
             val array = JSONArray(resp.body?.string().orEmpty())
             if (array.length() > 0) array.getJSONObject(0).optInt("id") else null
         } catch (_: Exception) { null }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
+        val value = bytes / Math.pow(1024.0, digitGroups.toDouble())
+        return String.format(java.util.Locale.US, "%.1f %s", value, units[digitGroups])
     }
 }

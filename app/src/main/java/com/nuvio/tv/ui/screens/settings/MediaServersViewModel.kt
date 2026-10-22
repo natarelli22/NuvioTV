@@ -98,8 +98,8 @@ class MediaServersViewModel @Inject constructor(
         }
     }
 
-    suspend fun testRequesterConnection(server: RequesterServerConfig): Result<Boolean> {
-        return requesterService.testConnection(server)
+    suspend fun testRequesterConnection(server: RequesterServerConfig): Result<String> {
+        return requesterService.testAndResolveCredentials(server)
     }
 
     fun provider(connection: ServerConnection): ServerProvider? = repository.provider(connection)

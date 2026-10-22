@@ -3181,15 +3181,13 @@
     <!-- Content Requester (Sonarr & Radarr) -->
     <string name="settings_content_requester_title">Content Requester</string>
     <string name="settings_content_requester_subtitle">Configure integrações com Sonarr e Radarr para solicitar mídias</string>
-    <string name="settings_content_requester_show">Mostrar Configurações do Content Requester</string>
-    <string name="settings_content_requester_hide">Ocultar Configurações do Content Requester</string>
     <string name="requester_sonarr_title">Ativar Sonarr (Séries)</string>
     <string name="requester_sonarr_description">Requisitar e monitorar automaticamente episódios de séries</string>
     <string name="requester_radarr_title">Ativar Radarr (Filmes)</string>
     <string name="requester_radarr_description">Requisitar e monitorar automaticamente filmes</string>
     <string name="requester_add_sonarr_server">Adicionar Servidor Sonarr</string>
     <string name="requester_add_radarr_server">Adicionar Servidor Radarr</string>
-    <string name="requester_add_server_hint">Adicionar endereço e chave de API</string>
+    <string name="requester_add_server_hint">Insira o endereço e credenciais do servidor</string>
     <string name="requester_default_sonarr_name">Servidor Sonarr</string>
     <string name="requester_default_radarr_name">Servidor Radarr</string>
     <string name="requester_dialog_title_add">Adicionar Servidor %1$s</string>
@@ -3198,8 +3196,12 @@
     <string name="requester_server_name_hint">ex: Radarr Principal</string>
     <string name="requester_server_url">Endereço do Servidor (URL)</string>
     <string name="requester_server_url_hint">http://192.168.1.100:7878</string>
+    <string name="requester_server_username">Usuário</string>
+    <string name="requester_server_username_hint">Deixe em branco se não houver login</string>
+    <string name="requester_server_password">Senha</string>
+    <string name="requester_server_password_hint">Deixe em branco se não houver login</string>
     <string name="requester_server_apikey">Chave de API (API Key)</string>
-    <string name="requester_server_apikey_hint">Cole a API Key de Ajustes > Geral</string>
+    <string name="requester_server_apikey_hint">Obtida automaticamente via login</string>
     <string name="requester_btn_test_save">Testar e Salvar</string>
     <string name="requester_btn_delete">Excluir Servidor</string>
     <string name="requester_test_success">Conectado com sucesso!</string>
@@ -3211,4 +3213,14 @@
     <string name="requester_panel_downloading">Baixando no %1$s: %2$d%%</string>
     <string name="requester_panel_eta">Restante: %1$s</string>
     <string name="requester_panel_available">✓ Disponível na sua biblioteca local!</string>
+    <string name="requester_stepper_server">Servidor</string>
+    <string name="requester_stepper_request">Solicitação</string>
+    <string name="requester_stepper_availability">Disponibilidade</string>
+    <string name="requester_status_level1">Solicitar Conteúdo</string>
+    <string name="requester_status_level1_desc">Este item não está na sua biblioteca local. Solicite o download via %1$s.</string>
+    <string name="requester_status_level2">Conteúdo Solicitado</string>
+    <string name="requester_status_level3_available">Conteúdo Disponível</string>
+    <string name="requester_status_level3_available_desc">Disponível na sua biblioteca local! Lista de transmissões atualizada.</string>
+    <string name="requester_status_level3_unavailable">Conteúdo Indisponível</string>
+    <string name="requester_btn_retry">Tentar Novamente</string>
 </resources>

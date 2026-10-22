@@ -40,6 +40,8 @@ import com.nuvio.tv.data.mediaserver.serverPlaybackMessageRes
 import com.nuvio.tv.data.local.ContentRequesterDataStore
 import com.nuvio.tv.data.requester.ContentRequesterService
 import com.nuvio.tv.data.requester.model.MediaRequesterStatus
+import com.nuvio.tv.data.requester.model.RequesterDot
+import com.nuvio.tv.data.requester.model.RequesterDotColor
 import com.nuvio.tv.domain.model.AddonStreams
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.Stream
@@ -2056,14 +2058,32 @@ class StreamScreenViewModel @Inject constructor(
         viewModelScope.launch {
             val prefs = contentRequesterDataStore.preferences.first()
             val isEp = season != null && episode != null
+            if (!prefs.hasActiveServer(isEp)) return@launch
+
             val imdbId = if (videoId.startsWith("tt")) videoId.substringBefore(":") else (contentId?.takeIf { it.startsWith("tt") })
             val tmdbId = if (videoId.startsWith("tmdb:")) videoId.substringAfter("tmdb:").substringBefore(":") else null
             val tvdbId = if (videoId.startsWith("tvdb:") || videoId.startsWith("kitsu:")) videoId.substringAfter(":").substringBefore(":") else null
 
+            val targetService = if (isEp) "Sonarr" else "Radarr"
+
+            updateUiStateIfChanged {
+                it.copy(
+                    mediaRequesterStatus = MediaRequesterStatus.Level2Requested(
+                        serverName = targetService,
+                        progressPercent = null,
+                        etaFormatted = null,
+                        dots = listOf(
+                            RequesterDot(R.string.requester_stepper_server, RequesterDotColor.GREEN),
+                            RequesterDot(R.string.requester_stepper_request, RequesterDotColor.YELLOW),
+                            RequesterDot(R.string.requester_stepper_availability, RequesterDotColor.GRAY)
+                        )
+                    )
+                )
+            }
+
             if (isEp) {
                 val s = season ?: 1
                 val e = episode ?: 1
-                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.MonitoredSearching("Sonarr")) }
                 val result = contentRequesterService.requestEpisode(
                     servers = prefs.sonarrServers,
                     imdbId = imdbId,
@@ -2076,11 +2096,21 @@ class StreamScreenViewModel @Inject constructor(
                     startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, s, e)
                 } else {
                     updateUiStateIfChanged {
-                        it.copy(mediaRequesterStatus = MediaRequesterStatus.Error(result.exceptionOrNull()?.localizedMessage ?: "Erro ao requisitar no Sonarr"))
+                        it.copy(
+                            mediaRequesterStatus = MediaRequesterStatus.Level3Unavailable(
+                                serverName = "Sonarr",
+                                reason = result.exceptionOrNull()?.localizedMessage ?: "Falha ao solicitar no Sonarr",
+                                canRetry = true,
+                                dots = listOf(
+                                    RequesterDot(R.string.requester_stepper_server, RequesterDotColor.GREEN),
+                                    RequesterDot(R.string.requester_stepper_request, RequesterDotColor.RED),
+                                    RequesterDot(R.string.requester_stepper_availability, RequesterDotColor.GRAY)
+                                )
+                            )
+                        )
                     }
                 }
             } else {
-                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.MonitoredSearching("Radarr")) }
                 val result = contentRequesterService.requestMovie(
                     servers = prefs.radarrServers,
                     imdbId = imdbId,
@@ -2092,7 +2122,18 @@ class StreamScreenViewModel @Inject constructor(
                     startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, null, null)
                 } else {
                     updateUiStateIfChanged {
-                        it.copy(mediaRequesterStatus = MediaRequesterStatus.Error(result.exceptionOrNull()?.localizedMessage ?: "Erro ao requisitar no Radarr"))
+                        it.copy(
+                            mediaRequesterStatus = MediaRequesterStatus.Level3Unavailable(
+                                serverName = "Radarr",
+                                reason = result.exceptionOrNull()?.localizedMessage ?: "Falha ao solicitar no Radarr",
+                                canRetry = true,
+                                dots = listOf(
+                                    RequesterDot(R.string.requester_stepper_server, RequesterDotColor.GREEN),
+                                    RequesterDot(R.string.requester_stepper_request, RequesterDotColor.RED),
+                                    RequesterDot(R.string.requester_stepper_availability, RequesterDotColor.GRAY)
+                                )
+                            )
+                        )
                     }
                 }
             }
@@ -2104,13 +2145,7 @@ class StreamScreenViewModel @Inject constructor(
             val prefs = contentRequesterDataStore.preferences.first()
             val isEp = season != null && episode != null
 
-            val applicable = if (isEp) {
-                prefs.sonarrEnabled && prefs.sonarrServers.any { it.enabled }
-            } else {
-                prefs.radarrEnabled && prefs.radarrServers.any { it.enabled }
-            }
-
-            if (!applicable) {
+            if (!prefs.hasActiveServer(isEp)) {
                 updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
                 return@launch
             }
@@ -2143,7 +2178,7 @@ class StreamScreenViewModel @Inject constructor(
 
             updateUiStateIfChanged { it.copy(mediaRequesterStatus = currentStatus) }
 
-            if (currentStatus is MediaRequesterStatus.Downloading || currentStatus is MediaRequesterStatus.MonitoredSearching) {
+            if (currentStatus is MediaRequesterStatus.Level2Requested) {
                 startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, season, episode)
             }
         }
@@ -2162,6 +2197,11 @@ class StreamScreenViewModel @Inject constructor(
             while (isActive) {
                 delay(4000)
                 val prefs = contentRequesterDataStore.preferences.first()
+                if (!prefs.hasActiveServer(isEp)) {
+                    updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                    break
+                }
+
                 val status = if (isEp) {
                     contentRequesterService.checkEpisodeStatus(
                         servers = prefs.sonarrServers,
@@ -2182,11 +2222,11 @@ class StreamScreenViewModel @Inject constructor(
 
                 updateUiStateIfChanged { it.copy(mediaRequesterStatus = status) }
 
-                if (status is MediaRequesterStatus.Available) {
+                if (status is MediaRequesterStatus.Level3Available) {
                     // Download concluído! Dispara refresh exclusivo da lista de streams
                     refreshStreamsOnly()
                     break
-                } else if (status is MediaRequesterStatus.Error || status is MediaRequesterStatus.Disabled) {
+                } else if (status is MediaRequesterStatus.Level3Unavailable || status is MediaRequesterStatus.Disabled) {
                     break
                 }
             }

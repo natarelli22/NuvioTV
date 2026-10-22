@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,8 +20,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import com.nuvio.tv.data.requester.model.RequesterServerConfig
 import com.nuvio.tv.data.requester.model.RequesterType
 import androidx.compose.runtime.Composable
@@ -108,42 +108,30 @@ internal fun MediaServersSettingsContent(
                     }
 
                     // --- CONTENT REQUESTER (SONARR & RADARR) ---
-                    item(key = "content_requester_label") {
-                        ServerSectionLabel(stringResource(R.string.settings_content_requester_title))
-                    }
-                    item(key = "content_requester_show_hide") {
-                        SettingsActionRow(
-                            title = if (requesterPrefs.isSectionVisible) {
-                                stringResource(R.string.settings_content_requester_hide)
-                            } else {
-                                stringResource(R.string.settings_content_requester_show)
-                            },
-                            subtitle = stringResource(R.string.settings_content_requester_subtitle),
-                            leadingIcon = if (requesterPrefs.isSectionVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            onClick = { viewModel.toggleContentRequesterVisibility() }
-                        )
-                    }
-
-                    if (requesterPrefs.isSectionVisible) {
-                        // SONARR (SÉRIES)
-                        item(key = "sonarr_toggle") {
+                    item(key = "content_requester_section") {
+                        SettingsCollapsibleSection(
+                            title = stringResource(R.string.settings_content_requester_title),
+                            description = stringResource(R.string.settings_content_requester_subtitle),
+                            icon = Icons.Default.CloudDownload,
+                            expanded = requesterPrefs.isSectionVisible,
+                            onToggle = { viewModel.toggleContentRequesterVisibility() }
+                        ) {
+                            // SONARR (SÉRIES)
                             SettingsToggleRow(
                                 title = stringResource(R.string.requester_sonarr_title),
                                 subtitle = stringResource(R.string.requester_sonarr_description),
                                 checked = requesterPrefs.sonarrEnabled,
                                 onToggle = { viewModel.setSonarrEnabled(!requesterPrefs.sonarrEnabled) }
                             )
-                        }
-                        if (requesterPrefs.sonarrEnabled) {
-                            items(requesterPrefs.sonarrServers, key = { "sonarr_${it.id}" }) { server ->
-                                SettingsActionRow(
-                                    title = server.name.ifBlank { stringResource(R.string.requester_default_sonarr_name) },
-                                    subtitle = server.url,
-                                    leadingIcon = Icons.Default.CloudDownload,
-                                    onClick = { requesterDialogServer = server to RequesterType.SONARR }
-                                )
-                            }
-                            item(key = "sonarr_add") {
+                            if (requesterPrefs.sonarrEnabled) {
+                                requesterPrefs.sonarrServers.forEach { server ->
+                                    SettingsActionRow(
+                                        title = server.name.ifBlank { stringResource(R.string.requester_default_sonarr_name) },
+                                        subtitle = server.url,
+                                        leadingIcon = Icons.Default.CloudDownload,
+                                        onClick = { requesterDialogServer = server to RequesterType.SONARR }
+                                    )
+                                }
                                 SettingsActionRow(
                                     title = stringResource(R.string.requester_add_sonarr_server),
                                     subtitle = stringResource(R.string.requester_add_server_hint),
@@ -151,27 +139,25 @@ internal fun MediaServersSettingsContent(
                                     onClick = { requesterDialogServer = null to RequesterType.SONARR }
                                 )
                             }
-                        }
 
-                        // RADARR (FILMES)
-                        item(key = "radarr_toggle") {
+                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+
+                            // RADARR (FILMES)
                             SettingsToggleRow(
                                 title = stringResource(R.string.requester_radarr_title),
                                 subtitle = stringResource(R.string.requester_radarr_description),
                                 checked = requesterPrefs.radarrEnabled,
                                 onToggle = { viewModel.setRadarrEnabled(!requesterPrefs.radarrEnabled) }
                             )
-                        }
-                        if (requesterPrefs.radarrEnabled) {
-                            items(requesterPrefs.radarrServers, key = { "radarr_${it.id}" }) { server ->
-                                SettingsActionRow(
-                                    title = server.name.ifBlank { stringResource(R.string.requester_default_radarr_name) },
-                                    subtitle = server.url,
-                                    leadingIcon = Icons.Default.Movie,
-                                    onClick = { requesterDialogServer = server to RequesterType.RADARR }
-                                )
-                            }
-                            item(key = "radarr_add") {
+                            if (requesterPrefs.radarrEnabled) {
+                                requesterPrefs.radarrServers.forEach { server ->
+                                    SettingsActionRow(
+                                        title = server.name.ifBlank { stringResource(R.string.requester_default_radarr_name) },
+                                        subtitle = server.url,
+                                        leadingIcon = Icons.Default.Movie,
+                                        onClick = { requesterDialogServer = server to RequesterType.RADARR }
+                                    )
+                                }
                                 SettingsActionRow(
                                     title = stringResource(R.string.requester_add_radarr_server),
                                     subtitle = stringResource(R.string.requester_add_server_hint),

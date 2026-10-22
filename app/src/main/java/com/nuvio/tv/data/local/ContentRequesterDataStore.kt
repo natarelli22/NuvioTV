@@ -50,7 +50,7 @@ class ContentRequesterDataStore @Inject constructor(
             } else emptyList()
 
             ContentRequesterPreferences(
-                isSectionVisible = prefs[isSectionVisibleKey] ?: true,
+                isSectionVisible = prefs[isSectionVisibleKey] ?: false,
                 sonarrEnabled = prefs[sonarrEnabledKey] ?: false,
                 radarrEnabled = prefs[radarrEnabledKey] ?: false,
                 sonarrServers = sonarrServers,

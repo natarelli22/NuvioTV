@@ -32,7 +32,7 @@ import java.util.UUID
 internal fun RequesterServerDialog(
     server: RequesterServerConfig?,
     type: RequesterType,
-    onTestConnection: suspend (RequesterServerConfig) -> Result<Boolean>,
+    onTestConnection: suspend (RequesterServerConfig) -> Result<String>,
     onSave: (RequesterServerConfig) -> Unit,
     onDelete: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
@@ -46,12 +46,13 @@ internal fun RequesterServerDialog(
 
     var name by remember { mutableStateOf(server?.name ?: "") }
     var url by remember { mutableStateOf(server?.url ?: "") }
-    var apiKey by remember { mutableStateOf(server?.apiKey ?: "") }
+    var username by remember { mutableStateOf(server?.username ?: "") }
+    var password by remember { mutableStateOf(server?.password ?: "") }
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     val scope = rememberCoroutineScope()
 
-    val canSave = url.isNotBlank() && apiKey.isNotBlank() && !isTesting
+    val canSave = url.isNotBlank() && !isTesting
 
     val runTestAndSave = {
         if (canSave) {
@@ -59,7 +60,9 @@ internal fun RequesterServerDialog(
                 id = server?.id ?: UUID.randomUUID().toString(),
                 name = name.ifBlank { defaultName },
                 url = url.trim(),
-                apiKey = apiKey.trim(),
+                apiKey = server?.apiKey ?: "",
+                username = username.trim(),
+                password = password,
                 enabled = server?.enabled ?: true
             )
             isTesting = true
@@ -67,8 +70,9 @@ internal fun RequesterServerDialog(
                 val result = onTestConnection(updated)
                 isTesting = false
                 if (result.isSuccess) {
+                    val resolvedKey = result.getOrDefault(server?.apiKey ?: "")
                     testResult = true to ""
-                    onSave(updated)
+                    onSave(updated.copy(apiKey = resolvedKey))
                 } else {
                     val err = result.exceptionOrNull()?.localizedMessage ?: "Erro desconhecido"
                     testResult = false to err
@@ -108,11 +112,22 @@ internal fun RequesterServerDialog(
             )
         }
 
-        RequesterFormField(label = stringResource(R.string.requester_server_apikey)) {
+        RequesterFormField(label = stringResource(R.string.requester_server_username)) {
             InputField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                placeholder = stringResource(R.string.requester_server_apikey_hint),
+                value = username,
+                onValueChange = { username = it },
+                placeholder = stringResource(R.string.requester_server_username_hint),
+                imeAction = ImeAction.Next,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        RequesterFormField(label = stringResource(R.string.requester_server_password)) {
+            InputField(
+                value = password,
+                onValueChange = { password = it },
+                placeholder = stringResource(R.string.requester_server_password_hint),
+                isPassword = true,
                 imeAction = ImeAction.Done,
                 onImeAction = { runTestAndSave() },
                 modifier = Modifier.fillMaxWidth()
