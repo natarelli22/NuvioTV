@@ -46,7 +46,6 @@ import com.nuvio.tv.data.mediaserver.supports
 import com.nuvio.tv.data.requester.model.RequesterServerConfig
 import com.nuvio.tv.data.requester.model.RequesterType
 import com.nuvio.tv.ui.components.NuvioDialog
-import com.nuvio.tv.ui.components.SettingsCollapsibleSection
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 @Composable
