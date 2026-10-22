@@ -28,13 +28,43 @@ class ContentRequesterService @Inject constructor(
     @Named("addonPermissive") private val okHttpClient: OkHttpClient
 ) {
 
+    private val testOkHttpClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+    }
+
     private fun normalizeUrl(url: String): String =
         url.trim().trimEnd('/')
+
+    private fun isUnreachableHost(e: Exception): Boolean {
+        return e is java.net.SocketTimeoutException ||
+            e is java.net.ConnectException ||
+            e is java.net.UnknownHostException ||
+            e is java.net.NoRouteToHostException
+    }
+
+    private fun verifyApiKey(baseUrl: String, apiKey: String): Boolean {
+        return try {
+            val statusReq = Request.Builder()
+                .url("$baseUrl/api/v3/system/status")
+                .header("X-Api-Key", apiKey.trim())
+                .get()
+                .build()
+            val resp = testOkHttpClient.newCall(statusReq).execute()
+            resp.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     /**
      * Testa e resolve as credenciais do servidor Sonarr ou Radarr.
      * Suporta:
-     * 1. Login por Usuário e Senha (Web UI Form Login + captura de cookie + extração de apiKey).
+     * 1. Login por Usuário e Senha (Web UI Form Login + captura de cookie + extração de apiKey via /initialize.json).
      * 2. HTTP Basic Auth com Usuário e Senha.
      * 3. Conexão direta sem autenticação (AuthenticationMethod: None).
      * 4. API Key direta previamente resolvida.
@@ -52,14 +82,20 @@ class ContentRequesterService @Inject constructor(
                 .header("X-Api-Key", server.apiKey.trim())
                 .get()
                 .build()
-            val resp = runCatching { okHttpClient.newCall(statusReq).execute() }.getOrNull()
-            if (resp != null && resp.isSuccessful) {
-                return@withContext Result.success(server.apiKey.trim())
+            try {
+                val resp = testOkHttpClient.newCall(statusReq).execute()
+                if (resp.isSuccessful) {
+                    return@withContext Result.success(server.apiKey.trim())
+                }
+            } catch (e: Exception) {
+                if (isUnreachableHost(e)) {
+                    return@withContext Result.failure(Exception("Não foi possível conectar ao servidor. Verifique o endereço e a porta."))
+                }
             }
         }
 
         // 2. Se usuário e senha foram fornecidos: Tenta login via Form (/login)
-        if (server.username.isNotBlank() && server.password.isNotBlank()) {
+        if (server.username.isNotBlank() || server.password.isNotBlank()) {
             try {
                 val formBody = FormBody.Builder()
                     .add("username", server.username.trim())
@@ -72,31 +108,56 @@ class ContentRequesterService @Inject constructor(
                     .post(formBody)
                     .build()
 
-                val loginResp = okHttpClient.newCall(loginReq).execute()
+                val loginResp = testOkHttpClient.newCall(loginReq).execute()
+                val location = loginResp.header("Location").orEmpty()
+                if (location.contains("loginFailed=true")) {
+                    return@withContext Result.failure(Exception("Usuário ou senha incorretos."))
+                }
+
                 val cookies = loginResp.headers.values("Set-Cookie")
                 val cookieHeader = cookies.joinToString("; ") { it.substringBefore(';') }
 
-                // Se o login tiver sucesso (200 OK ou redirecionamento 302/303)
-                if (loginResp.isSuccessful || loginResp.isRedirect) {
-                    val hostReq = Request.Builder()
-                        .url("$baseUrl/api/v3/config/host")
-                        .apply {
-                            if (cookieHeader.isNotBlank()) header("Cookie", cookieHeader)
-                        }
-                        .get()
-                        .build()
+                // 2.1 Endpoint oficial da Web UI com o cookie de sessão: /initialize.json
+                val initReq = Request.Builder()
+                    .url("$baseUrl/initialize.json")
+                    .apply {
+                        if (cookieHeader.isNotBlank()) header("Cookie", cookieHeader)
+                    }
+                    .get()
+                    .build()
 
-                    val hostResp = okHttpClient.newCall(hostReq).execute()
-                    if (hostResp.isSuccessful) {
-                        val body = hostResp.body?.string().orEmpty()
-                        val json = JSONObject(body)
-                        val key = json.optString("apiKey")
-                        if (key.isNotBlank()) {
-                            return@withContext Result.success(key)
-                        }
+                val initResp = testOkHttpClient.newCall(initReq).execute()
+                if (initResp.isSuccessful) {
+                    val body = initResp.body?.string().orEmpty()
+                    val json = JSONObject(body)
+                    val key = json.optString("apiKey")
+                    if (key.isNotBlank() && verifyApiKey(baseUrl, key)) {
+                        return@withContext Result.success(key)
+                    }
+                }
+
+                // 2.2 Fallback para /api/v3/config/host com cookie
+                val hostReq = Request.Builder()
+                    .url("$baseUrl/api/v3/config/host")
+                    .apply {
+                        if (cookieHeader.isNotBlank()) header("Cookie", cookieHeader)
+                    }
+                    .get()
+                    .build()
+
+                val hostResp = testOkHttpClient.newCall(hostReq).execute()
+                if (hostResp.isSuccessful) {
+                    val body = hostResp.body?.string().orEmpty()
+                    val json = JSONObject(body)
+                    val key = json.optString("apiKey")
+                    if (key.isNotBlank() && verifyApiKey(baseUrl, key)) {
+                        return@withContext Result.success(key)
                     }
                 }
             } catch (e: Exception) {
+                if (isUnreachableHost(e)) {
+                    return@withContext Result.failure(Exception("Não foi possível conectar ao servidor. Verifique o endereço e a porta."))
+                }
                 Log.w(TAG, "Tentativa de login via /login falhou: ${e.message}")
             }
 
@@ -107,37 +168,70 @@ class ContentRequesterService @Inject constructor(
                     Base64.NO_WRAP
                 )
                 val basicReq = Request.Builder()
+                    .url("$baseUrl/initialize.json")
+                    .header("Authorization", "Basic $credentials")
+                    .get()
+                    .build()
+
+                val basicResp = testOkHttpClient.newCall(basicReq).execute()
+                if (basicResp.isSuccessful) {
+                    val body = basicResp.body?.string().orEmpty()
+                    val json = JSONObject(body)
+                    val key = json.optString("apiKey")
+                    if (key.isNotBlank() && verifyApiKey(baseUrl, key)) {
+                        return@withContext Result.success(key)
+                    }
+                }
+
+                val basicHostReq = Request.Builder()
                     .url("$baseUrl/api/v3/config/host")
                     .header("Authorization", "Basic $credentials")
                     .get()
                     .build()
 
-                val basicResp = okHttpClient.newCall(basicReq).execute()
-                if (basicResp.isSuccessful) {
-                    val body = basicResp.body?.string().orEmpty()
+                val basicHostResp = testOkHttpClient.newCall(basicHostReq).execute()
+                if (basicHostResp.isSuccessful) {
+                    val body = basicHostResp.body?.string().orEmpty()
                     val json = JSONObject(body)
                     val key = json.optString("apiKey")
-                    if (key.isNotBlank()) {
+                    if (key.isNotBlank() && verifyApiKey(baseUrl, key)) {
                         return@withContext Result.success(key)
                     }
                 }
             } catch (e: Exception) {
+                if (isUnreachableHost(e)) {
+                    return@withContext Result.failure(Exception("Não foi possível conectar ao servidor. Verifique o endereço e a porta."))
+                }
                 Log.w(TAG, "Tentativa de Basic Auth falhou: ${e.message}")
             }
         }
 
-        // 4. Sem autenticação (None): tenta obter apiKey de /api/v3/config/host diretamente
+        // 4. Sem autenticação (None): tenta obter apiKey de /initialize.json ou /config/host
         try {
+            val initReq = Request.Builder()
+                .url("$baseUrl/initialize.json")
+                .get()
+                .build()
+            val initResp = testOkHttpClient.newCall(initReq).execute()
+            if (initResp.isSuccessful) {
+                val body = initResp.body?.string().orEmpty()
+                val json = JSONObject(body)
+                val key = json.optString("apiKey")
+                if (key.isNotBlank() && verifyApiKey(baseUrl, key)) {
+                    return@withContext Result.success(key)
+                }
+            }
+
             val noneReq = Request.Builder()
                 .url("$baseUrl/api/v3/config/host")
                 .get()
                 .build()
-            val noneResp = okHttpClient.newCall(noneReq).execute()
+            val noneResp = testOkHttpClient.newCall(noneReq).execute()
             if (noneResp.isSuccessful) {
                 val body = noneResp.body?.string().orEmpty()
                 val json = JSONObject(body)
                 val key = json.optString("apiKey")
-                if (key.isNotBlank()) {
+                if (key.isNotBlank() && verifyApiKey(baseUrl, key)) {
                     return@withContext Result.success(key)
                 }
             }
@@ -147,11 +241,14 @@ class ContentRequesterService @Inject constructor(
                 .url("$baseUrl/api/v3/system/status")
                 .get()
                 .build()
-            val statusResp = okHttpClient.newCall(statusReq).execute()
+            val statusResp = testOkHttpClient.newCall(statusReq).execute()
             if (statusResp.isSuccessful) {
                 return@withContext Result.success("")
             }
         } catch (e: Exception) {
+            if (isUnreachableHost(e)) {
+                return@withContext Result.failure(Exception("Não foi possível conectar ao servidor. Verifique o endereço e a porta."))
+            }
             Log.w(TAG, "Tentativa sem autenticação falhou: ${e.message}")
         }
 

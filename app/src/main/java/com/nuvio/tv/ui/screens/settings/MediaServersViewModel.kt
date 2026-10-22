@@ -102,6 +102,49 @@ class MediaServersViewModel @Inject constructor(
         return requesterService.testAndResolveCredentials(server)
     }
 
+    fun toggleServerContentRequesterVisibility(mediaServerId: String) {
+        val current = requesterPrefs.value.getConfigForServer(mediaServerId)
+        viewModelScope.launch {
+            requesterDataStore.setServerSectionVisible(mediaServerId, !current.isSectionVisible)
+        }
+    }
+
+    fun setServerSonarrEnabled(mediaServerId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            requesterDataStore.setServerSonarrEnabled(mediaServerId, enabled)
+        }
+    }
+
+    fun setServerRadarrEnabled(mediaServerId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            requesterDataStore.setServerRadarrEnabled(mediaServerId, enabled)
+        }
+    }
+
+    fun saveServerSonarrServer(mediaServerId: String, server: RequesterServerConfig) {
+        viewModelScope.launch {
+            requesterDataStore.saveServerSonarrServer(mediaServerId, server)
+        }
+    }
+
+    fun removeServerSonarrServer(mediaServerId: String, serverId: String) {
+        viewModelScope.launch {
+            requesterDataStore.removeServerSonarrServer(mediaServerId, serverId)
+        }
+    }
+
+    fun saveServerRadarrServer(mediaServerId: String, server: RequesterServerConfig) {
+        viewModelScope.launch {
+            requesterDataStore.saveServerRadarrServer(mediaServerId, server)
+        }
+    }
+
+    fun removeServerRadarrServer(mediaServerId: String, serverId: String) {
+        viewModelScope.launch {
+            requesterDataStore.removeServerRadarrServer(mediaServerId, serverId)
+        }
+    }
+
     fun provider(connection: ServerConnection): ServerProvider? = repository.provider(connection)
 
     fun resetSignIn() {

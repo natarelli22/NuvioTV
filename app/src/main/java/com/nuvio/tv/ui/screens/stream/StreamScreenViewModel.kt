@@ -2091,7 +2091,7 @@ class StreamScreenViewModel @Inject constructor(
                 val s = season ?: 1
                 val e = episode ?: 1
                 val result = contentRequesterService.requestEpisode(
-                    servers = prefs.sonarrServers,
+                    servers = prefs.getActiveServers(isSeries = true),
                     imdbId = imdbId,
                     tvdbId = tvdbId,
                     seriesTitle = title,
@@ -2113,7 +2113,7 @@ class StreamScreenViewModel @Inject constructor(
                 }
             } else {
                 val result = contentRequesterService.requestMovie(
-                    servers = prefs.radarrServers,
+                    servers = prefs.getActiveServers(isSeries = false),
                     imdbId = imdbId,
                     tmdbId = tmdbId,
                     title = title,
@@ -2156,7 +2156,7 @@ class StreamScreenViewModel @Inject constructor(
                 val s = season ?: 1
                 val e = episode ?: 1
                 contentRequesterService.checkEpisodeStatus(
-                    servers = prefs.sonarrServers,
+                    servers = prefs.getActiveServers(isSeries = true),
                     imdbId = imdbId,
                     tvdbId = tvdbId,
                     seriesTitle = title,
@@ -2165,7 +2165,7 @@ class StreamScreenViewModel @Inject constructor(
                 )
             } else {
                 contentRequesterService.checkMovieStatus(
-                    servers = prefs.radarrServers,
+                    servers = prefs.getActiveServers(isSeries = false),
                     imdbId = imdbId,
                     tmdbId = tmdbId,
                     title = title
@@ -2200,7 +2200,7 @@ class StreamScreenViewModel @Inject constructor(
 
                 val status = if (isEp) {
                     contentRequesterService.checkEpisodeStatus(
-                        servers = prefs.sonarrServers,
+                        servers = prefs.getActiveServers(isSeries = true),
                         imdbId = imdbId,
                         tvdbId = tvdbId,
                         seriesTitle = title,
@@ -2209,7 +2209,7 @@ class StreamScreenViewModel @Inject constructor(
                     )
                 } else {
                     contentRequesterService.checkMovieStatus(
-                        servers = prefs.radarrServers,
+                        servers = prefs.getActiveServers(isSeries = false),
                         imdbId = imdbId,
                         tmdbId = tmdbId,
                         title = title

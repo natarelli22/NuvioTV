@@ -39,19 +39,62 @@ data class RequesterServerConfig(
 
 @Serializable
 @Immutable
+data class MediaServerRequesterConfig(
+    val mediaServerId: String = "",
+    val isSectionVisible: Boolean = false,
+    val sonarrEnabled: Boolean = false,
+    val radarrEnabled: Boolean = false,
+    val sonarrServers: List<RequesterServerConfig> = emptyList(),
+    val radarrServers: List<RequesterServerConfig> = emptyList()
+)
+
+@Serializable
+@Immutable
 data class ContentRequesterPreferences(
+    val serverConfigs: Map<String, MediaServerRequesterConfig> = emptyMap(),
     val isSectionVisible: Boolean = false,
     val sonarrEnabled: Boolean = false,
     val radarrEnabled: Boolean = false,
     val sonarrServers: List<RequesterServerConfig> = emptyList(),
     val radarrServers: List<RequesterServerConfig> = emptyList()
 ) {
+    fun getConfigForServer(connectionId: String): MediaServerRequesterConfig {
+        return serverConfigs[connectionId] ?: MediaServerRequesterConfig(mediaServerId = connectionId)
+    }
+
     fun hasActiveServer(isSeries: Boolean): Boolean {
+        val hasActiveInServerConfigs = serverConfigs.values.any { cfg ->
+            if (isSeries) {
+                cfg.sonarrEnabled && cfg.sonarrServers.any { it.enabled && it.url.isNotBlank() }
+            } else {
+                cfg.radarrEnabled && cfg.radarrServers.any { it.enabled && it.url.isNotBlank() }
+            }
+        }
+        if (hasActiveInServerConfigs) return true
         return if (isSeries) {
             sonarrEnabled && sonarrServers.any { it.enabled && it.url.isNotBlank() }
         } else {
             radarrEnabled && radarrServers.any { it.enabled && it.url.isNotBlank() }
         }
+    }
+
+    fun getActiveServers(isSeries: Boolean): List<RequesterServerConfig> {
+        val list = mutableListOf<RequesterServerConfig>()
+        serverConfigs.values.forEach { cfg ->
+            if (isSeries && cfg.sonarrEnabled) {
+                list.addAll(cfg.sonarrServers.filter { it.enabled && it.url.isNotBlank() })
+            } else if (!isSeries && cfg.radarrEnabled) {
+                list.addAll(cfg.radarrServers.filter { it.enabled && it.url.isNotBlank() })
+            }
+        }
+        if (list.isEmpty()) {
+            if (isSeries && sonarrEnabled) {
+                list.addAll(sonarrServers.filter { it.enabled && it.url.isNotBlank() })
+            } else if (!isSeries && radarrEnabled) {
+                list.addAll(radarrServers.filter { it.enabled && it.url.isNotBlank() })
+            }
+        }
+        return list
     }
 }
 

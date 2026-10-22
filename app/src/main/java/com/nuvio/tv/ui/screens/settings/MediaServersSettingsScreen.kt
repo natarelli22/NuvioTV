@@ -49,9 +49,7 @@ internal fun MediaServersSettingsContent(
     viewModel: MediaServersViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val requesterPrefs by viewModel.requesterPrefs.collectAsStateWithLifecycle()
     var signIn by remember { mutableStateOf<ServerSignInRequest?>(null) }
-    var requesterDialogServer by remember { mutableStateOf<Pair<RequesterServerConfig?, RequesterType>?>(null) }
     val connections = uiState.connections
     val focusModifier = initialFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
 
@@ -107,66 +105,6 @@ internal fun MediaServersSettingsContent(
                         )
                     }
 
-                    // --- CONTENT REQUESTER (SONARR & RADARR) ---
-                    item(key = "content_requester_section") {
-                        SettingsCollapsibleSection(
-                            title = stringResource(R.string.settings_content_requester_title),
-                            description = stringResource(R.string.settings_content_requester_subtitle),
-                            icon = Icons.Default.CloudDownload,
-                            expanded = requesterPrefs.isSectionVisible,
-                            onToggle = { viewModel.toggleContentRequesterVisibility() }
-                        ) {
-                            // SONARR (SÉRIES)
-                            SettingsToggleRow(
-                                title = stringResource(R.string.requester_sonarr_title),
-                                subtitle = stringResource(R.string.requester_sonarr_description),
-                                checked = requesterPrefs.sonarrEnabled,
-                                onToggle = { viewModel.setSonarrEnabled(!requesterPrefs.sonarrEnabled) }
-                            )
-                            if (requesterPrefs.sonarrEnabled) {
-                                requesterPrefs.sonarrServers.forEach { server ->
-                                    SettingsActionRow(
-                                        title = server.name.ifBlank { stringResource(R.string.requester_default_sonarr_name) },
-                                        subtitle = server.url,
-                                        leadingIcon = Icons.Default.CloudDownload,
-                                        onClick = { requesterDialogServer = server to RequesterType.SONARR }
-                                    )
-                                }
-                                SettingsActionRow(
-                                    title = stringResource(R.string.requester_add_sonarr_server),
-                                    subtitle = stringResource(R.string.requester_add_server_hint),
-                                    leadingIcon = Icons.Default.Add,
-                                    onClick = { requesterDialogServer = null to RequesterType.SONARR }
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
-
-                            // RADARR (FILMES)
-                            SettingsToggleRow(
-                                title = stringResource(R.string.requester_radarr_title),
-                                subtitle = stringResource(R.string.requester_radarr_description),
-                                checked = requesterPrefs.radarrEnabled,
-                                onToggle = { viewModel.setRadarrEnabled(!requesterPrefs.radarrEnabled) }
-                            )
-                            if (requesterPrefs.radarrEnabled) {
-                                requesterPrefs.radarrServers.forEach { server ->
-                                    SettingsActionRow(
-                                        title = server.name.ifBlank { stringResource(R.string.requester_default_radarr_name) },
-                                        subtitle = server.url,
-                                        leadingIcon = Icons.Default.Movie,
-                                        onClick = { requesterDialogServer = server to RequesterType.RADARR }
-                                    )
-                                }
-                                SettingsActionRow(
-                                    title = stringResource(R.string.requester_add_radarr_server),
-                                    subtitle = stringResource(R.string.requester_add_server_hint),
-                                    leadingIcon = Icons.Default.Add,
-                                    onClick = { requesterDialogServer = null to RequesterType.RADARR }
-                                )
-                            }
-                        }
-                    }
                 }
                 SettingsVerticalScrollIndicators(state = listState)
             }
@@ -182,33 +120,6 @@ internal fun MediaServersSettingsContent(
                 onOpenServer(connection.id)
             },
             onDismiss = { signIn = null }
-        )
-    }
-
-    requesterDialogServer?.let { (server, type) ->
-        RequesterServerDialog(
-            server = server,
-            type = type,
-            onTestConnection = { viewModel.testRequesterConnection(it) },
-            onSave = { saved ->
-                if (type == RequesterType.SONARR) {
-                    viewModel.saveSonarrServer(saved)
-                } else {
-                    viewModel.saveRadarrServer(saved)
-                }
-                requesterDialogServer = null
-            },
-            onDelete = if (server != null) {
-                { serverId ->
-                    if (type == RequesterType.SONARR) {
-                        viewModel.removeSonarrServer(serverId)
-                    } else {
-                        viewModel.removeRadarrServer(serverId)
-                    }
-                    requesterDialogServer = null
-                }
-            } else null,
-            onDismiss = { requesterDialogServer = null }
         )
     }
 }

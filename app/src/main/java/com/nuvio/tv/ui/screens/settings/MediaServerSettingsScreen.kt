@@ -7,15 +7,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,7 +43,10 @@ import com.nuvio.tv.R
 import com.nuvio.tv.data.mediaserver.ServerCapability
 import com.nuvio.tv.data.mediaserver.messageRes
 import com.nuvio.tv.data.mediaserver.supports
+import com.nuvio.tv.data.requester.model.RequesterServerConfig
+import com.nuvio.tv.data.requester.model.RequesterType
 import com.nuvio.tv.ui.components.NuvioDialog
+import com.nuvio.tv.ui.components.SettingsCollapsibleSection
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 @Composable
@@ -51,16 +59,19 @@ internal fun MediaServerSettingsContent(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
+    val requesterPrefs by viewModel.requesterPrefs.collectAsStateWithLifecycle()
     val connection = uiState.connections.firstOrNull { it.id == connectionId }
     if (connection == null) {
         LaunchedEffect(Unit) { onBack() }
         return
     }
+    val serverRequesterConfig = requesterPrefs.getConfigForServer(connection.id)
     val context = LocalContext.current
     val provider = viewModel.provider(connection)
     val providerName = provider?.displayName ?: connection.providerId
     var signIn by remember { mutableStateOf<ServerSignInRequest?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var requesterDialogServer by remember { mutableStateOf<Pair<RequesterServerConfig?, RequesterType>?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         SettingsDetailHeader(
@@ -147,6 +158,67 @@ internal fun MediaServerSettingsContent(
                             }
                         )
                     }
+
+                    // --- CONTENT REQUESTER (SONARR & RADARR) ---
+                    item(key = "server_content_requester") {
+                        SettingsCollapsibleSection(
+                            title = stringResource(R.string.settings_content_requester_title),
+                            description = stringResource(R.string.settings_content_requester_subtitle),
+                            icon = Icons.Default.CloudDownload,
+                            expanded = serverRequesterConfig.isSectionVisible,
+                            onToggle = { viewModel.toggleServerContentRequesterVisibility(connection.id) }
+                        ) {
+                            // SONARR (SÉRIES)
+                            SettingsToggleRow(
+                                title = stringResource(R.string.requester_sonarr_title),
+                                subtitle = stringResource(R.string.requester_sonarr_description),
+                                checked = serverRequesterConfig.sonarrEnabled,
+                                onToggle = { viewModel.setServerSonarrEnabled(connection.id, !serverRequesterConfig.sonarrEnabled) }
+                            )
+                            if (serverRequesterConfig.sonarrEnabled) {
+                                serverRequesterConfig.sonarrServers.forEach { server ->
+                                    SettingsActionRow(
+                                        title = server.name.ifBlank { stringResource(R.string.requester_default_sonarr_name) },
+                                        subtitle = server.url,
+                                        leadingIcon = Icons.Default.CloudDownload,
+                                        onClick = { requesterDialogServer = server to RequesterType.SONARR }
+                                    )
+                                }
+                                SettingsActionRow(
+                                    title = stringResource(R.string.requester_add_sonarr_server),
+                                    subtitle = stringResource(R.string.requester_add_server_hint),
+                                    leadingIcon = Icons.Default.Add,
+                                    onClick = { requesterDialogServer = null to RequesterType.SONARR }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+
+                            // RADARR (FILMES)
+                            SettingsToggleRow(
+                                title = stringResource(R.string.requester_radarr_title),
+                                subtitle = stringResource(R.string.requester_radarr_description),
+                                checked = serverRequesterConfig.radarrEnabled,
+                                onToggle = { viewModel.setServerRadarrEnabled(connection.id, !serverRequesterConfig.radarrEnabled) }
+                            )
+                            if (serverRequesterConfig.radarrEnabled) {
+                                serverRequesterConfig.radarrServers.forEach { server ->
+                                    SettingsActionRow(
+                                        title = server.name.ifBlank { stringResource(R.string.requester_default_radarr_name) },
+                                        subtitle = server.url,
+                                        leadingIcon = Icons.Default.Movie,
+                                        onClick = { requesterDialogServer = server to RequesterType.RADARR }
+                                    )
+                                }
+                                SettingsActionRow(
+                                    title = stringResource(R.string.requester_add_radarr_server),
+                                    subtitle = stringResource(R.string.requester_add_server_hint),
+                                    leadingIcon = Icons.Default.Add,
+                                    onClick = { requesterDialogServer = null to RequesterType.RADARR }
+                                )
+                            }
+                        }
+                    }
                     if (provider != null) {
                         item(key = "server_sign_in") {
                             SettingsActionRow(
@@ -206,5 +278,32 @@ internal fun MediaServerSettingsContent(
                 )
             }
         }
+    }
+
+    requesterDialogServer?.let { (server, type) ->
+        RequesterServerDialog(
+            server = server,
+            type = type,
+            onTestConnection = { viewModel.testRequesterConnection(it) },
+            onSave = { saved ->
+                if (type == RequesterType.SONARR) {
+                    viewModel.saveServerSonarrServer(connection.id, saved)
+                } else {
+                    viewModel.saveServerRadarrServer(connection.id, saved)
+                }
+                requesterDialogServer = null
+            },
+            onDelete = if (server != null) {
+                { serverId ->
+                    if (type == RequesterType.SONARR) {
+                        viewModel.removeServerSonarrServer(connection.id, serverId)
+                    } else {
+                        viewModel.removeServerRadarrServer(connection.id, serverId)
+                    }
+                    requesterDialogServer = null
+                }
+            } else null,
+            onDismiss = { requesterDialogServer = null }
+        )
     }
 }

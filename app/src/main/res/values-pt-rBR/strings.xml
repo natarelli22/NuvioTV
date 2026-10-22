@@ -3385,7 +3385,9 @@
     <string name="requester_dialog_title_add">Adicionar Servidor %1$s</string>
     <string name="requester_dialog_title_edit">Editar Servidor %1$s</string>
     <string name="requester_server_name">Nome do Servidor</string>
-    <string name="requester_server_name_hint">ex: Radarr Principal</string>
+    <string name="requester_server_name_hint">ex: Servidor Principal</string>
+    <string name="requester_server_name_hint_sonarr">ex: Sonarr Principal</string>
+    <string name="requester_server_name_hint_radarr">ex: Radarr Principal</string>
     <string name="requester_server_url">Endereço do Servidor (URL)</string>
     <string name="requester_server_url_hint">http://192.168.1.100:7878</string>
     <string name="requester_server_username">Usuário</string>

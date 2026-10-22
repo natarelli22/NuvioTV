@@ -5,6 +5,8 @@ package com.nuvio.tv.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +27,7 @@ import com.nuvio.tv.data.requester.model.RequesterType
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.screens.account.InputField
 import com.nuvio.tv.ui.theme.NuvioTheme
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -43,6 +46,11 @@ internal fun RequesterServerDialog(
     } else {
         stringResource(R.string.requester_default_radarr_name)
     }
+    val nameHint = if (type == RequesterType.SONARR) {
+        stringResource(R.string.requester_server_name_hint_sonarr)
+    } else {
+        stringResource(R.string.requester_server_name_hint_radarr)
+    }
 
     var name by remember { mutableStateOf(server?.name ?: "") }
     var url by remember { mutableStateOf(server?.url ?: "") }
@@ -50,7 +58,14 @@ internal fun RequesterServerDialog(
     var password by remember { mutableStateOf(server?.password ?: "") }
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var testJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
+
+    val cancelAndDismiss = {
+        testJob?.cancel()
+        isTesting = false
+        onDismiss()
+    }
 
     val canSave = url.isNotBlank() && !isTesting
 
@@ -66,7 +81,9 @@ internal fun RequesterServerDialog(
                 enabled = server?.enabled ?: true
             )
             isTesting = true
-            scope.launch {
+            testResult = null
+            testJob?.cancel()
+            testJob = scope.launch {
                 val result = onTestConnection(updated)
                 isTesting = false
                 if (result.isSuccess) {
@@ -82,75 +99,84 @@ internal fun RequesterServerDialog(
     }
 
     NuvioDialog(
-        onDismiss = { if (!isTesting) onDismiss() },
+        onDismiss = cancelAndDismiss,
         title = if (server == null) {
             stringResource(R.string.requester_dialog_title_add, typeName)
         } else {
             stringResource(R.string.requester_dialog_title_edit, typeName)
         },
         subtitle = stringResource(R.string.requester_add_server_hint),
-        width = 640.dp
+        contentSpacing = NuvioTheme.spacing.sm,
+        width = 620.dp
     ) {
-        RequesterFormField(label = stringResource(R.string.requester_server_name)) {
-            InputField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = stringResource(R.string.requester_server_name_hint),
-                imeAction = ImeAction.Next,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+        ) {
+            RequesterFormField(label = stringResource(R.string.requester_server_name)) {
+                InputField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = nameHint,
+                    imeAction = ImeAction.Next,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
-        RequesterFormField(label = stringResource(R.string.requester_server_url)) {
-            InputField(
-                value = url,
-                onValueChange = { url = it },
-                placeholder = stringResource(R.string.requester_server_url_hint),
-                keyboardType = KeyboardType.Uri,
-                imeAction = ImeAction.Next,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+            RequesterFormField(label = stringResource(R.string.requester_server_url)) {
+                InputField(
+                    value = url,
+                    onValueChange = { url = it },
+                    placeholder = stringResource(R.string.requester_server_url_hint),
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Next,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
-        RequesterFormField(label = stringResource(R.string.requester_server_username)) {
-            InputField(
-                value = username,
-                onValueChange = { username = it },
-                placeholder = stringResource(R.string.requester_server_username_hint),
-                imeAction = ImeAction.Next,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+            RequesterFormField(label = stringResource(R.string.requester_server_username)) {
+                InputField(
+                    value = username,
+                    onValueChange = { username = it },
+                    placeholder = stringResource(R.string.requester_server_username_hint),
+                    imeAction = ImeAction.Next,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
-        RequesterFormField(label = stringResource(R.string.requester_server_password)) {
-            InputField(
-                value = password,
-                onValueChange = { password = it },
-                placeholder = stringResource(R.string.requester_server_password_hint),
-                isPassword = true,
-                imeAction = ImeAction.Done,
-                onImeAction = { runTestAndSave() },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+            RequesterFormField(label = stringResource(R.string.requester_server_password)) {
+                InputField(
+                    value = password,
+                    onValueChange = { password = it },
+                    placeholder = stringResource(R.string.requester_server_password_hint),
+                    isPassword = true,
+                    imeAction = ImeAction.Done,
+                    onImeAction = { runTestAndSave() },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
-        testResult?.let { (success, msg) ->
-            Text(
-                text = if (success) {
-                    stringResource(R.string.requester_test_success)
-                } else {
-                    stringResource(R.string.requester_test_failed, msg)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = if (success) NuvioTheme.colors.Primary else NuvioTheme.colors.Error
-            )
+            testResult?.let { (success, msg) ->
+                Text(
+                    text = if (success) {
+                        stringResource(R.string.requester_test_success)
+                    } else {
+                        stringResource(R.string.requester_test_failed, msg)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (success) NuvioTheme.colors.Primary else NuvioTheme.colors.Error
+                )
+            }
         }
 
         SettingsDialogActionRow {
             SettingsDialogActionButton(
                 text = stringResource(R.string.action_cancel),
-                onClick = onDismiss,
-                enabled = !isTesting
+                onClick = cancelAndDismiss,
+                enabled = true
             )
 
             if (server != null && onDelete != null) {
@@ -162,7 +188,7 @@ internal fun RequesterServerDialog(
             }
 
             SettingsDialogActionButton(
-                text = stringResource(R.string.requester_btn_test_save),
+                text = if (isTesting) "Testando..." else stringResource(R.string.requester_btn_test_save),
                 onClick = { runTestAndSave() },
                 primary = true,
                 enabled = canSave

@@ -3419,7 +3419,9 @@
     <string name="requester_dialog_title_add">Add %1$s Server</string>
     <string name="requester_dialog_title_edit">Edit %1$s Server</string>
     <string name="requester_server_name">Server Name</string>
-    <string name="requester_server_name_hint">e.g. Primary Radarr</string>
+    <string name="requester_server_name_hint">e.g. Primary Server</string>
+    <string name="requester_server_name_hint_sonarr">e.g. Primary Sonarr</string>
+    <string name="requester_server_name_hint_radarr">e.g. Primary Radarr</string>
     <string name="requester_server_url">Server Address (URL)</string>
     <string name="requester_server_url_hint">http://192.168.1.100:7878</string>
     <string name="requester_server_username">Username</string>
