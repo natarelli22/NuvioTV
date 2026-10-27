@@ -56,45 +56,9 @@ class MediaServersViewModel @Inject constructor(
         repository.ensureLoaded()
     }
 
-    fun toggleContentRequesterVisibility() {
+    fun removeServerRequesterConfig(mediaServerId: String) {
         viewModelScope.launch {
-            requesterDataStore.setSectionVisible(!requesterPrefs.value.isSectionVisible)
-        }
-    }
-
-    fun setSonarrEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            requesterDataStore.setSonarrEnabled(enabled)
-        }
-    }
-
-    fun setRadarrEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            requesterDataStore.setRadarrEnabled(enabled)
-        }
-    }
-
-    fun saveSonarrServer(server: RequesterServerConfig) {
-        viewModelScope.launch {
-            requesterDataStore.saveSonarrServer(server)
-        }
-    }
-
-    fun removeSonarrServer(serverId: String) {
-        viewModelScope.launch {
-            requesterDataStore.removeSonarrServer(serverId)
-        }
-    }
-
-    fun saveRadarrServer(server: RequesterServerConfig) {
-        viewModelScope.launch {
-            requesterDataStore.saveRadarrServer(server)
-        }
-    }
-
-    fun removeRadarrServer(serverId: String) {
-        viewModelScope.launch {
-            requesterDataStore.removeRadarrServer(serverId)
+            requesterDataStore.removeServerConfig(mediaServerId)
         }
     }
 

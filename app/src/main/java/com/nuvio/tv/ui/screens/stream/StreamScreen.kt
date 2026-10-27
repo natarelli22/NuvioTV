@@ -883,10 +883,7 @@ private fun RightStreamSection(
                     animationSpec = tween(260),
                     initialOffsetX = { fullWidth -> (fullWidth * 0.06f).toInt() }
                 ),
-            exit = fadeOut(animationSpec = tween(120)),
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+            exit = fadeOut(animationSpec = tween(120))
         ) {
             // Content area – resume pill, addon chips and streams all inside one card
             Column(
@@ -933,14 +930,23 @@ private fun RightStreamSection(
                 }
 
                 // Media Requester Window (Top)
-                if (mediaRequesterStatus !is MediaRequesterStatus.Disabled) {
+                val shouldShowRequester = when (mediaRequesterStatus) {
+                    is MediaRequesterStatus.Disabled,
+                    is MediaRequesterStatus.Checking -> false
+                    is MediaRequesterStatus.Level1NotRequested,
+                    is MediaRequesterStatus.Level2Requested,
+                    is MediaRequesterStatus.Level3Available,
+                    is MediaRequesterStatus.Level3Unavailable -> true
+                }
+
+                if (shouldShowRequester) {
                     MediaRequesterPanel(
                         status = mediaRequesterStatus,
                         isEpisode = isEpisode,
                         onRequest = onRequestMedia,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = NuvioTheme.spacing.md)
+                            .padding(top = 4.dp, bottom = NuvioTheme.spacing.md)
                     )
                 }
 

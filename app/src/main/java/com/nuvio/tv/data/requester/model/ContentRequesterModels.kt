@@ -51,47 +51,37 @@ data class MediaServerRequesterConfig(
 @Serializable
 @Immutable
 data class ContentRequesterPreferences(
-    val serverConfigs: Map<String, MediaServerRequesterConfig> = emptyMap(),
-    val isSectionVisible: Boolean = false,
-    val sonarrEnabled: Boolean = false,
-    val radarrEnabled: Boolean = false,
-    val sonarrServers: List<RequesterServerConfig> = emptyList(),
-    val radarrServers: List<RequesterServerConfig> = emptyList()
+    val serverConfigs: Map<String, MediaServerRequesterConfig> = emptyMap()
 ) {
     fun getConfigForServer(connectionId: String): MediaServerRequesterConfig {
         return serverConfigs[connectionId] ?: MediaServerRequesterConfig(mediaServerId = connectionId)
     }
 
-    fun hasActiveServer(isSeries: Boolean): Boolean {
-        val hasActiveInServerConfigs = serverConfigs.values.any { cfg ->
+    private fun activeConfigs(enabledMediaServerIds: Set<String>?): Collection<MediaServerRequesterConfig> {
+        return if (enabledMediaServerIds != null) {
+            serverConfigs.filterKeys { it in enabledMediaServerIds }.values
+        } else {
+            serverConfigs.values
+        }
+    }
+
+    fun hasActiveServer(isSeries: Boolean, enabledMediaServerIds: Set<String>? = null): Boolean {
+        return activeConfigs(enabledMediaServerIds).any { cfg ->
             if (isSeries) {
                 cfg.sonarrEnabled && cfg.sonarrServers.any { it.enabled && it.url.isNotBlank() }
             } else {
                 cfg.radarrEnabled && cfg.radarrServers.any { it.enabled && it.url.isNotBlank() }
             }
         }
-        if (hasActiveInServerConfigs) return true
-        return if (isSeries) {
-            sonarrEnabled && sonarrServers.any { it.enabled && it.url.isNotBlank() }
-        } else {
-            radarrEnabled && radarrServers.any { it.enabled && it.url.isNotBlank() }
-        }
     }
 
-    fun getActiveServers(isSeries: Boolean): List<RequesterServerConfig> {
+    fun getActiveServers(isSeries: Boolean, enabledMediaServerIds: Set<String>? = null): List<RequesterServerConfig> {
         val list = mutableListOf<RequesterServerConfig>()
-        serverConfigs.values.forEach { cfg ->
+        activeConfigs(enabledMediaServerIds).forEach { cfg ->
             if (isSeries && cfg.sonarrEnabled) {
                 list.addAll(cfg.sonarrServers.filter { it.enabled && it.url.isNotBlank() })
             } else if (!isSeries && cfg.radarrEnabled) {
                 list.addAll(cfg.radarrServers.filter { it.enabled && it.url.isNotBlank() })
-            }
-        }
-        if (list.isEmpty()) {
-            if (isSeries && sonarrEnabled) {
-                list.addAll(sonarrServers.filter { it.enabled && it.url.isNotBlank() })
-            } else if (!isSeries && radarrEnabled) {
-                list.addAll(radarrServers.filter { it.enabled && it.url.isNotBlank() })
             }
         }
         return list
@@ -148,7 +138,7 @@ sealed class MediaRequesterStatus {
         val message: String = "",
         val canRetry: Boolean = true,
         val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_server),
-        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.RED, labelRes = R.string.requester_stepper_request),
+        val requestDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_request),
         val availabilityDot: RequesterDot = RequesterDot(RequesterDotColor.RED, labelRes = R.string.requester_stepper_availability)
     ) : MediaRequesterStatus() {
         override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)

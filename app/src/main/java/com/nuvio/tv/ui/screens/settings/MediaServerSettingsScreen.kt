@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
@@ -158,12 +157,44 @@ internal fun MediaServerSettingsContent(
                         )
                     }
 
-                    // --- CONTENT REQUESTER (SONARR & RADARR) ---
-                    item(key = "server_content_requester") {
+                    if (provider != null) {
+                        item(key = "server_sign_in") {
+                            SettingsActionRow(
+                                title = stringResource(R.string.servers_sign_in_again),
+                                subtitle = null,
+                                leadingIcon = Icons.Default.Lock,
+                                onClick = {
+                                    signIn = ServerSignInRequest(provider, address = connection.address, username = connection.userName)
+                                }
+                            )
+                        }
+                    }
+                    item(key = "server_remove") {
+                        SettingsActionRow(
+                            title = stringResource(R.string.servers_remove),
+                            subtitle = null,
+                            leadingIcon = Icons.Default.Delete,
+                            onClick = { confirmRemove = true }
+                        )
+                    }
+
+                    // --- MEDIA REQUESTER (SONARR & RADARR) ---
+                    item(key = "server_media_requester_header") {
+                        Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)) {
+                            ServerSectionLabel(stringResource(R.string.settings_content_requester_title))
+                            Text(
+                                text = stringResource(R.string.settings_content_requester_subtitle),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NuvioTheme.colors.TextSecondary,
+                                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.sm)
+                            )
+                        }
+                    }
+                    item(key = "server_media_requester") {
                         SettingsCollapsibleSection(
                             title = stringResource(R.string.settings_content_requester_title),
                             description = stringResource(R.string.settings_content_requester_subtitle),
-                            icon = Icons.Default.CloudDownload,
+                            icon = Icons.Default.Sync,
                             expanded = serverRequesterConfig.isSectionVisible,
                             onToggle = { viewModel.toggleServerContentRequesterVisibility(connection.id) }
                         ) {
@@ -179,7 +210,7 @@ internal fun MediaServerSettingsContent(
                                     SettingsActionRow(
                                         title = server.name.ifBlank { stringResource(R.string.requester_default_sonarr_name) },
                                         subtitle = server.url,
-                                        leadingIcon = Icons.Default.CloudDownload,
+                                        leadingIcon = Icons.Default.Sync,
                                         onClick = { requesterDialogServer = server to RequesterType.SONARR }
                                     )
                                 }
@@ -218,26 +249,6 @@ internal fun MediaServerSettingsContent(
                             }
                         }
                     }
-                    if (provider != null) {
-                        item(key = "server_sign_in") {
-                            SettingsActionRow(
-                                title = stringResource(R.string.servers_sign_in_again),
-                                subtitle = null,
-                                leadingIcon = Icons.Default.Lock,
-                                onClick = {
-                                    signIn = ServerSignInRequest(provider, address = connection.address, username = connection.userName)
-                                }
-                            )
-                        }
-                    }
-                    item(key = "server_remove") {
-                        SettingsActionRow(
-                            title = stringResource(R.string.servers_remove),
-                            subtitle = null,
-                            leadingIcon = Icons.Default.Delete,
-                            onClick = { confirmRemove = true }
-                        )
-                    }
                 }
                 SettingsVerticalScrollIndicators(state = listState)
             }
@@ -271,6 +282,7 @@ internal fun MediaServerSettingsContent(
                     text = stringResource(R.string.servers_remove),
                     onClick = {
                         confirmRemove = false
+                        viewModel.removeServerRequesterConfig(connection.id)
                         viewModel.remove(connection.id)
                     },
                     primary = true

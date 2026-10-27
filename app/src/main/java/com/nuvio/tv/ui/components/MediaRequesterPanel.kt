@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,10 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -72,26 +74,32 @@ fun MediaRequesterPanel(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .height(88.dp)
             .clip(shape)
             .background(NuvioTheme.colors.BackgroundElevated)
             .border(width = 1.dp, color = borderColor, shape = shape)
-            .padding(NuvioTheme.spacing.md)
+            .padding(
+                start = NuvioTheme.spacing.md,
+                end = NuvioTheme.spacing.md,
+                top = 11.dp,
+                bottom = 7.dp
+            )
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Linha Principal de Informações e Ação
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
             ) {
                 // Ícone Indicador
                 when (status) {
                     is MediaRequesterStatus.Checking -> {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(22.dp),
                             strokeWidth = 2.dp,
                             color = NuvioTheme.colors.Primary
                         )
@@ -101,23 +109,23 @@ fun MediaRequesterPanel(
                             imageVector = Icons.Default.CloudDownload,
                             contentDescription = null,
                             tint = NuvioTheme.colors.Primary,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                     is MediaRequesterStatus.Level2Requested -> {
                         if (status.progressPercent != null) {
                             Icon(
-                                imageVector = Icons.Default.Download,
+                                imageVector = Icons.Default.Sync,
                                 contentDescription = null,
                                 tint = NuvioTheme.colors.Primary,
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         } else {
                             Icon(
                                 imageVector = Icons.Default.HourglassEmpty,
                                 contentDescription = null,
                                 tint = Color(0xFFFFC107),
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
@@ -126,7 +134,7 @@ fun MediaRequesterPanel(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
                             tint = Color(0xFF4CAF50),
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                     is MediaRequesterStatus.Level3Unavailable -> {
@@ -134,19 +142,19 @@ fun MediaRequesterPanel(
                             imageVector = Icons.Default.ErrorOutline,
                             contentDescription = null,
                             tint = NuvioTheme.colors.Error,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
-                    MediaRequesterStatus.Disabled -> Unit
+                    MediaRequesterStatus.Disabled -> {}
                 }
 
-                // Textos
+                // Textos de Status
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalArrangement = Arrangement.Center
                 ) {
                     val title = when (status) {
-                        is MediaRequesterStatus.Checking -> "Content Requester · $serviceName"
+                        is MediaRequesterStatus.Checking -> stringResource(R.string.requester_status_checking_title, serviceName)
                         is MediaRequesterStatus.Level1NotRequested -> stringResource(R.string.requester_status_level1)
                         is MediaRequesterStatus.Level2Requested -> stringResource(R.string.requester_status_level2)
                         is MediaRequesterStatus.Level3Available -> stringResource(R.string.requester_status_level3_available)
@@ -154,48 +162,52 @@ fun MediaRequesterPanel(
                         MediaRequesterStatus.Disabled -> ""
                     }
 
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = when (status) {
-                            is MediaRequesterStatus.Level3Available -> Color(0xFF4CAF50)
-                            is MediaRequesterStatus.Level3Unavailable -> NuvioTheme.colors.Error
-                            else -> NuvioTheme.colors.TextPrimary
+                    val subtitle = when (status) {
+                        is MediaRequesterStatus.Checking -> stringResource(R.string.requester_status_checking_desc, serviceName)
+                        is MediaRequesterStatus.Level1NotRequested -> {
+                            stringResource(R.string.requester_status_level1_desc)
                         }
-                    )
-
-                    val description = when (status) {
-                        is MediaRequesterStatus.Checking -> "Verificando servidores e biblioteca local..."
-                        is MediaRequesterStatus.Level1NotRequested -> stringResource(R.string.requester_status_level1_desc, status.serverName)
                         is MediaRequesterStatus.Level2Requested -> {
                             if (status.progressPercent != null) {
-                                val eta = status.etaFormatted?.let { " · ${stringResource(R.string.requester_panel_eta, it)}" } ?: ""
+                                val eta = status.etaFormatted?.let { " · " + stringResource(R.string.requester_panel_eta, it) } ?: ""
                                 stringResource(R.string.requester_panel_downloading, status.serverName, status.progressPercent) + eta
                             } else {
-                                stringResource(R.string.requester_panel_searching)
+                                status.phaseDescription.ifBlank { stringResource(R.string.requester_panel_searching) }
                             }
                         }
-                        is MediaRequesterStatus.Level3Available -> stringResource(R.string.requester_status_level3_available_desc)
-                        is MediaRequesterStatus.Level3Unavailable -> status.message.ifBlank { stringResource(R.string.requester_status_level3_unavailable) }
+                        is MediaRequesterStatus.Level3Available -> {
+                            status.message.ifBlank { stringResource(R.string.requester_status_level3_available_desc) }
+                        }
+                        is MediaRequesterStatus.Level3Unavailable -> {
+                            status.message.ifBlank { stringResource(R.string.requester_panel_sources_unavailable) }
+                        }
                         MediaRequesterStatus.Disabled -> ""
                     }
 
                     Text(
-                        text = description,
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = NuvioTheme.colors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = NuvioTheme.colors.TextSecondary
+                        color = NuvioTheme.colors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
-                    // Barra de progresso para Level 2 se baixando
+                    // Barra de progresso para Level 2 se processando
                     if (status is MediaRequesterStatus.Level2Requested && status.progressPercent != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val progressFloat = status.progressPercent.toFloat() / 100f
+                        Spacer(modifier = Modifier.height(3.dp))
                         LinearProgressIndicator(
-                            progress = { progressFloat.coerceIn(0f, 1f) },
+                            progress = { status.progressPercent / 100f },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp)),
                             color = NuvioTheme.colors.Primary,
                             trackColor = NuvioTheme.colors.BackgroundCard
                         )
@@ -224,19 +236,19 @@ fun MediaRequesterPanel(
                         )
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.sm),
+                            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.sm, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
                         ) {
                             Icon(
                                 imageVector = if (status is MediaRequesterStatus.Level1NotRequested) Icons.Default.CloudDownload else Icons.Default.Refresh,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(15.dp),
                                 tint = if (isFocused) Color.White else NuvioTheme.colors.TextPrimary
                             )
                             Text(
                                 text = if (status is MediaRequesterStatus.Level1NotRequested) {
-                                    stringResource(R.string.requester_panel_btn_request, status.serverName)
+                                    stringResource(R.string.requester_panel_btn_request)
                                 } else {
                                     stringResource(R.string.requester_btn_retry)
                                 },
@@ -262,7 +274,7 @@ private fun RequesterStepperRow(dots: List<RequesterDot>) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp),
+            .padding(top = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -276,11 +288,11 @@ private fun RequesterStepperRow(dots: List<RequesterDot>) {
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(7.dp)
                         .background(dotColor, CircleShape)
                 )
                 val dotLabel = if (dot.labelRes != 0) stringResource(dot.labelRes) else dot.label
@@ -298,8 +310,8 @@ private fun RequesterStepperRow(dots: List<RequesterDot>) {
             if (index < dots.lastIndex) {
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 10.dp)
-                        .width(28.dp)
+                        .padding(horizontal = 8.dp)
+                        .width(24.dp)
                         .height(1.dp)
                         .background(NuvioTheme.colors.TextSecondary.copy(alpha = 0.25f))
                 )

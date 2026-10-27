@@ -38,8 +38,7 @@ data class StreamScreenUiState(
     val autoPlayPlaybackInfo: StreamPlaybackInfo? = null,
     val error: String? = null,
     val playbackErrorMessage: String? = null,
-    val mediaRequesterStatus: MediaRequesterStatus = MediaRequesterStatus.Disabled,
-    val isStreamsRefreshing: Boolean = false
+    val mediaRequesterStatus: MediaRequesterStatus = MediaRequesterStatus.Disabled
 ) {
     val isEpisode: Boolean get() = season != null && episode != null
 }

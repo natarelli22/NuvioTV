@@ -69,13 +69,20 @@ internal fun RequesterServerDialog(
 
     val canSave = url.isNotBlank() && !isTesting
 
+    val unknownErrorText = stringResource(R.string.requester_error_unknown)
+
     val runTestAndSave = {
         if (canSave) {
+            val credentialsChanged = server != null && (
+                url.trim() != server.url.trim() ||
+                username.trim() != server.username.trim() ||
+                password != server.password
+            )
             val updated = RequesterServerConfig(
                 id = server?.id ?: UUID.randomUUID().toString(),
                 name = name.ifBlank { defaultName },
                 url = url.trim(),
-                apiKey = server?.apiKey ?: "",
+                apiKey = if (credentialsChanged) "" else (server?.apiKey ?: ""),
                 username = username.trim(),
                 password = password,
                 enabled = server?.enabled ?: true
@@ -87,11 +94,11 @@ internal fun RequesterServerDialog(
                 val result = onTestConnection(updated)
                 isTesting = false
                 if (result.isSuccess) {
-                    val resolvedKey = result.getOrDefault(server?.apiKey ?: "")
+                    val resolvedKey = result.getOrDefault(if (credentialsChanged) "" else (server?.apiKey ?: ""))
                     testResult = true to ""
                     onSave(updated.copy(apiKey = resolvedKey))
                 } else {
-                    val err = result.exceptionOrNull()?.localizedMessage ?: "Erro desconhecido"
+                    val err = result.exceptionOrNull()?.localizedMessage ?: unknownErrorText
                     testResult = false to err
                 }
             }
@@ -188,7 +195,7 @@ internal fun RequesterServerDialog(
             }
 
             SettingsDialogActionButton(
-                text = if (isTesting) "Testando..." else stringResource(R.string.requester_btn_test_save),
+                text = if (isTesting) stringResource(R.string.requester_btn_testing) else stringResource(R.string.requester_btn_test_save),
                 onClick = { runTestAndSave() },
                 primary = true,
                 enabled = canSave

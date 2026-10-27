@@ -7,21 +7,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Movie
-import com.nuvio.tv.data.requester.model.RequesterServerConfig
-import com.nuvio.tv.data.requester.model.RequesterType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -104,7 +97,6 @@ internal fun MediaServersSettingsContent(
                             modifier = if (connections.isEmpty() && provider == viewModel.providers.first()) focusModifier else Modifier
                         )
                     }
-
                 }
                 SettingsVerticalScrollIndicators(state = listState)
             }
