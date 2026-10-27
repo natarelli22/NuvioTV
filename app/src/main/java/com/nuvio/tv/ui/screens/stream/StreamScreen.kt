@@ -94,7 +94,9 @@ import com.nuvio.tv.core.player.ExternalPlayerLauncher
 import com.nuvio.tv.core.streams.StreamBadgePlacement
 import com.nuvio.tv.core.streams.StreamBadgeSettings
 import com.nuvio.tv.data.local.PlayerPreference
+import com.nuvio.tv.data.requester.model.MediaRequesterStatus
 import com.nuvio.tv.domain.model.Stream
+import com.nuvio.tv.ui.components.MediaRequesterPanel
 import com.nuvio.tv.ui.components.SourceChipItem
 import com.nuvio.tv.ui.components.SourceChipStatus
 import com.nuvio.tv.ui.components.P2pConsentDialog
@@ -458,6 +460,9 @@ fun StreamScreen(
                 // Right side - Streams container
                 RightStreamSection(
                     isLoading = uiState.isLoading,
+                    mediaRequesterStatus = uiState.mediaRequesterStatus,
+                    isEpisode = uiState.isEpisode,
+                    onRequestMedia = { viewModel.requestCurrentMedia() },
                     resumeText = resumeText,
                     error = uiState.error,
                     streams = uiState.filteredStreams,
@@ -755,6 +760,9 @@ private fun LeftContentSection(
 @Composable
 private fun RightStreamSection(
     isLoading: Boolean,
+    mediaRequesterStatus: MediaRequesterStatus,
+    isEpisode: Boolean,
+    onRequestMedia: () -> Unit,
     resumeText: String?,
     error: String?,
     streams: List<Stream>,
@@ -919,6 +927,27 @@ private fun RightStreamSection(
                             color = NuvioTheme.colors.TextPrimary
                         )
                     }
+                }
+
+                // Media Requester Window (Top)
+                val shouldShowRequester = when (mediaRequesterStatus) {
+                    is MediaRequesterStatus.Disabled,
+                    is MediaRequesterStatus.Checking -> false
+                    is MediaRequesterStatus.Level1NotRequested,
+                    is MediaRequesterStatus.Level2Requested,
+                    is MediaRequesterStatus.Level3Available,
+                    is MediaRequesterStatus.Level3Unavailable -> true
+                }
+
+                if (shouldShowRequester) {
+                    MediaRequesterPanel(
+                        status = mediaRequesterStatus,
+                        isEpisode = isEpisode,
+                        onRequest = onRequestMedia,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp, bottom = NuvioTheme.spacing.md)
+                    )
                 }
 
                 // Addon filter chips

@@ -37,6 +37,9 @@ import com.nuvio.tv.data.mediaserver.ServerPlayback
 import com.nuvio.tv.data.mediaserver.ServerPlaybackTarget
 import com.nuvio.tv.data.mediaserver.ServerStreams
 import com.nuvio.tv.data.mediaserver.serverPlaybackMessageRes
+import com.nuvio.tv.data.local.ContentRequesterDataStore
+import com.nuvio.tv.data.requester.ContentRequesterService
+import com.nuvio.tv.data.requester.model.MediaRequesterStatus
 import com.nuvio.tv.domain.model.AddonStreams
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.Stream
@@ -60,6 +63,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -100,6 +104,9 @@ class StreamScreenViewModel @Inject constructor(
     private val externalPlaybackTracker: com.nuvio.tv.core.player.ExternalPlaybackTracker,
     private val subtitleRepository: com.nuvio.tv.domain.repository.SubtitleRepository,
     private val subtitleFileCache: com.nuvio.tv.core.player.SubtitleFileCache,
+    private val contentRequesterDataStore: ContentRequesterDataStore,
+    private val contentRequesterService: ContentRequesterService,
+    private val serverRepository: com.nuvio.tv.data.mediaserver.ServerRepository,
     private val torrentService: TorrentService,
     private val serverStreams: ServerStreams,
     private val serverPlayback: ServerPlayback,
@@ -122,6 +129,9 @@ class StreamScreenViewModel @Inject constructor(
     private var streamBadgePresentationRequestId = 0L
     private var badgedAddonNames: Set<String> = emptySet()
     private var playbackMetaVideos: List<Video>? = null
+    private var mediaRequesterCheckJob: Job? = null
+    private var mediaRequesterPollingJob: Job? = null
+    private var isPostDownloadCountdownActive = false
 
     private val embeddedStreamGroupName: String by lazy {
         context.getString(R.string.stream_embedded_group)
@@ -212,6 +222,8 @@ class StreamScreenViewModel @Inject constructor(
     val p2pEnabled = torrentSettings.settings
         .map { it.p2pEnabled }
         .distinctUntilChanged()
+
+    private var hasCompletedMediaRequesterFlow = false
 
     fun enableP2p() = torrentSettings.setP2pEnabled(true)
 
@@ -308,6 +320,7 @@ class StreamScreenViewModel @Inject constructor(
         }
         loadMissingMetaDetailsIfNeeded()
         loadStreams()
+        checkMediaRequesterStatus()
     }
 
     private fun SavedStateHandle.getOptionalString(key: String): String? {
@@ -683,6 +696,11 @@ class StreamScreenViewModel @Inject constructor(
                             false
                         }
                     )
+                }
+                if (allStreams.any { it.serverTarget != null } && !isPostDownloadCountdownActive) {
+                    mediaRequesterPollingJob?.cancel()
+                    mediaRequesterPollingJob = null
+                    updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
                 }
                 scheduleStreamBadgePresentation(mergedAddonStreams)
             }
@@ -1621,6 +1639,7 @@ class StreamScreenViewModel @Inject constructor(
             isTorrentStreamStarted = false
         }
         externalOverlayHideJob?.cancel()
+        mediaRequesterPollingJob?.cancel()
         streamLoadScope?.cancel()
         streamLoadScope = null
         streamLoadJob = null
@@ -2055,6 +2074,295 @@ class StreamScreenViewModel @Inject constructor(
         }
     }
 
+    private fun resolveRequesterExternalIds(): Triple<String?, String?, String?> {
+        val parentSize = if (videoId.startsWith("tt")) 1 else 2
+        val parentId = contentId?.takeIf { it.isNotBlank() }
+            ?: videoId.split(':').take(parentSize).joinToString(":")
+        val cachedImdb = if (parentId.isNotBlank() && contentType.isNotBlank()) {
+            metaRepository.getCachedMeta(contentType, parentId)?.imdbId?.takeIf { it.startsWith("tt") }
+        } else {
+            null
+        }
+
+        val imdbId = when {
+            videoId.startsWith("tt") -> videoId.substringBefore(":")
+            contentId?.startsWith("tt") == true -> contentId.substringBefore(":")
+            else -> cachedImdb
+        }
+        val tmdbId = when {
+            videoId.startsWith("tmdb:") -> videoId.substringAfter("tmdb:").substringBefore(":")
+            contentId?.startsWith("tmdb:") == true -> contentId.substringAfter("tmdb:").substringBefore(":")
+            else -> null
+        }
+        val tvdbId = when {
+            videoId.startsWith("tvdb:") -> videoId.substringAfter("tvdb:").substringBefore(":")
+            contentId?.startsWith("tvdb:") == true -> contentId.substringAfter("tvdb:").substringBefore(":")
+            else -> null
+        }
+        return Triple(imdbId, tmdbId, tvdbId)
+    }
+
+    private suspend fun runPostDownloadCountdownAndRefresh(status: MediaRequesterStatus.Level3Available) {
+        isPostDownloadCountdownActive = true
+        try {
+            updateUiStateIfChanged { it.copy(mediaRequesterStatus = status) }
+            delay(15_000L)
+            hasCompletedMediaRequesterFlow = true
+            updateUiStateIfChanged {
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    selectedAddonFilter = null,
+                    filteredStreams = emptyList(),
+                    mediaRequesterStatus = MediaRequesterStatus.Disabled
+                )
+            }
+            loadStreams(forceRefresh = true)
+        } finally {
+            isPostDownloadCountdownActive = false
+        }
+    }
+
+    fun requestCurrentMedia() {
+        mediaRequesterCheckJob?.cancel()
+        mediaRequesterPollingJob?.cancel()
+        viewModelScope.launch {
+            val enabledMediaServerIds = serverRepository.enabledConnections().map { it.id }.toSet()
+            val prefs = contentRequesterDataStore.preferences.first()
+            val epSeason = season
+            val epNumber = episode
+            val isEp = epSeason != null && epNumber != null
+            if (!prefs.hasActiveServer(isEp, enabledMediaServerIds)) return@launch
+
+            val (imdbId, tmdbId, tvdbId) = resolveRequesterExternalIds()
+            val targetService = if (isEp) "Sonarr" else "Radarr"
+
+            updateUiStateIfChanged {
+                it.copy(
+                    mediaRequesterStatus = MediaRequesterStatus.Level2Requested(
+                        serverName = targetService,
+                        phaseDescription = ""
+                    )
+                )
+            }
+
+            if (epSeason != null && epNumber != null) {
+                val result = contentRequesterService.requestEpisode(
+                    servers = prefs.getActiveServers(isSeries = true, enabledMediaServerIds = enabledMediaServerIds),
+                    imdbId = imdbId,
+                    tvdbId = tvdbId,
+                    seriesTitle = title,
+                    season = epSeason,
+                    episode = epNumber
+                )
+                if (result.isSuccess) {
+                    startMediaRequesterPolling(true, imdbId, tmdbId, tvdbId, epSeason, epNumber)
+                } else {
+                    val errMsg = result.exceptionOrNull()?.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: context.getString(R.string.requester_error_request_failed, "Sonarr")
+                    updateUiStateIfChanged {
+                        it.copy(
+                            mediaRequesterStatus = MediaRequesterStatus.Level3Unavailable(
+                                serverName = "Sonarr",
+                                message = errMsg,
+                                canRetry = true
+                            )
+                        )
+                    }
+                }
+            } else {
+                val result = contentRequesterService.requestMovie(
+                    servers = prefs.getActiveServers(isSeries = false, enabledMediaServerIds = enabledMediaServerIds),
+                    imdbId = imdbId,
+                    tmdbId = tmdbId,
+                    title = title,
+                    year = year
+                )
+                if (result.isSuccess) {
+                    startMediaRequesterPolling(false, imdbId, tmdbId, tvdbId, null, null)
+                } else {
+                    val errMsg = result.exceptionOrNull()?.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: context.getString(R.string.requester_error_request_failed, "Radarr")
+                    updateUiStateIfChanged {
+                        it.copy(
+                            mediaRequesterStatus = MediaRequesterStatus.Level3Unavailable(
+                                serverName = "Radarr",
+                                message = errMsg,
+                                canRetry = true
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkMediaRequesterStatus() {
+        if (hasCompletedMediaRequesterFlow) {
+            updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+            return
+        }
+        mediaRequesterCheckJob?.cancel()
+        mediaRequesterCheckJob = viewModelScope.launch {
+            if (hasCompletedMediaRequesterFlow || serverStreams.isNativeRequest(videoId)) {
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                return@launch
+            }
+
+            val enabledMediaServerIds = serverRepository.enabledConnections().map { it.id }.toSet()
+            val prefs = contentRequesterDataStore.preferences.first()
+            val epSeason = season
+            val epNumber = episode
+            val isEp = epSeason != null && epNumber != null
+
+            if (!prefs.hasActiveServer(isEp, enabledMediaServerIds)) {
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                return@launch
+            }
+
+            // Aguarda deterministicamente a busca no servidor de mídia local (compartilha o mesmo cache em voo do ServerMatcher)
+            val localServerSources = serverStreams.sources(contentType, videoId, epSeason, epNumber, forceRefresh = false)
+            val foundOnLocalServer = localServerSources.any { source ->
+                try {
+                    source.load().isNotEmpty()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    false
+                }
+            }
+
+            if (foundOnLocalServer || _uiState.value.allStreams.any { it.serverTarget != null }) {
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                return@launch
+            }
+
+            updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Checking) }
+
+            val (imdbId, tmdbId, tvdbId) = resolveRequesterExternalIds()
+
+            val currentStatus = if (epSeason != null && epNumber != null) {
+                contentRequesterService.checkEpisodeStatus(
+                    servers = prefs.getActiveServers(isSeries = true, enabledMediaServerIds = enabledMediaServerIds),
+                    imdbId = imdbId,
+                    tvdbId = tvdbId,
+                    seriesTitle = title,
+                    season = epSeason,
+                    episode = epNumber
+                )
+            } else {
+                contentRequesterService.checkMovieStatus(
+                    servers = prefs.getActiveServers(isSeries = false, enabledMediaServerIds = enabledMediaServerIds),
+                    imdbId = imdbId,
+                    tmdbId = tmdbId,
+                    title = title
+                )
+            }
+
+            val hasServerStream = _uiState.value.allStreams.any { it.serverTarget != null } ||
+                _uiState.value.filteredStreams.any { it.serverTarget != null }
+
+            if (hasServerStream) {
+                updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                return@launch
+            }
+
+            if (currentStatus is MediaRequesterStatus.Level3Available) {
+                mediaRequesterPollingJob?.cancel()
+                mediaRequesterPollingJob = viewModelScope.launch {
+                    runPostDownloadCountdownAndRefresh(currentStatus)
+                }
+                return@launch
+            }
+
+            updateUiStateIfChanged { it.copy(mediaRequesterStatus = currentStatus) }
+
+            if (currentStatus is MediaRequesterStatus.Level2Requested) {
+                startMediaRequesterPolling(isEp, imdbId, tmdbId, tvdbId, epSeason, epNumber)
+            }
+        }
+    }
+
+    private fun startMediaRequesterPolling(
+        isEp: Boolean,
+        imdbId: String?,
+        tmdbId: String?,
+        tvdbId: String?,
+        season: Int?,
+        episode: Int?
+    ) {
+        mediaRequesterPollingJob?.cancel()
+        mediaRequesterPollingJob = viewModelScope.launch {
+            var searchPollCount = 0
+            val targetService = if (isEp) "Sonarr" else "Radarr"
+
+            while (isActive) {
+                delay(4000L)
+                val enabledMediaServerIds = serverRepository.enabledConnections().map { it.id }.toSet()
+                val prefs = contentRequesterDataStore.preferences.first()
+                if (!prefs.hasActiveServer(isEp, enabledMediaServerIds)) {
+                    updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                    break
+                }
+
+                if (_uiState.value.allStreams.any { it.serverTarget != null } && !isPostDownloadCountdownActive) {
+                    updateUiStateIfChanged { it.copy(mediaRequesterStatus = MediaRequesterStatus.Disabled) }
+                    break
+                }
+
+                val status = if (isEp) {
+                    contentRequesterService.checkEpisodeStatus(
+                        servers = prefs.getActiveServers(isSeries = true, enabledMediaServerIds = enabledMediaServerIds),
+                        imdbId = imdbId,
+                        tvdbId = tvdbId,
+                        seriesTitle = title,
+                        season = season ?: 1,
+                        episode = episode ?: 1,
+                        isPollingActive = true
+                    )
+                } else {
+                    contentRequesterService.checkMovieStatus(
+                        servers = prefs.getActiveServers(isSeries = false, enabledMediaServerIds = enabledMediaServerIds),
+                        imdbId = imdbId,
+                        tmdbId = tmdbId,
+                        title = title,
+                        isPollingActive = true
+                    )
+                }
+
+                if (status is MediaRequesterStatus.Level3Available) {
+                    runPostDownloadCountdownAndRefresh(status)
+                    break
+                } else if (status is MediaRequesterStatus.Level2Requested && status.progressPercent != null) {
+                    searchPollCount = 0
+                    updateUiStateIfChanged { it.copy(mediaRequesterStatus = status) }
+                } else if (status is MediaRequesterStatus.Level3Unavailable || status is MediaRequesterStatus.Disabled) {
+                    updateUiStateIfChanged { it.copy(mediaRequesterStatus = status) }
+                    break
+                } else {
+                    searchPollCount++
+                    if (searchPollCount >= 13) {
+                        val unavailableStatus = MediaRequesterStatus.Level3Unavailable(
+                            serverName = targetService,
+                            message = context.getString(R.string.requester_panel_sources_unavailable),
+                            canRetry = true
+                        )
+                        updateUiStateIfChanged { it.copy(mediaRequesterStatus = unavailableStatus) }
+                        break
+                    } else {
+                        updateUiStateIfChanged {
+                            it.copy(
+                                mediaRequesterStatus = MediaRequesterStatus.Level2Requested(
+                                    serverName = targetService,
+                                    phaseDescription = ""
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun Stream.badgeMergeKey(): String {
