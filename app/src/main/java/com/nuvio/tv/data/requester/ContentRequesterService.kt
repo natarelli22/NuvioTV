@@ -555,6 +555,9 @@ class ContentRequesterService @Inject constructor(
                         atLeastOneSuccess = true
                         continue
                     }
+                    // Garante que o filme existente esteja marcado como monitorado no Radarr
+                    monitorRadarrMovie(baseUrl, apiKey, existingId)
+
                     val cmdBody = JSONObject().apply {
                         put("name", "MoviesSearch")
                         put("movieIds", JSONArray().put(existingId))
@@ -681,6 +684,25 @@ class ContentRequesterService @Inject constructor(
                 if (array.length() > 0) array.getJSONObject(0).optInt("id") else null
             }
         } catch (_: Exception) { null }
+    }
+
+    private fun monitorRadarrMovie(baseUrl: String, apiKey: String, movieId: Int) {
+        try {
+            val payload = JSONObject().apply {
+                put("movieIds", JSONArray().put(movieId))
+                put("monitored", true)
+            }
+            val req = Request.Builder()
+                .url("$baseUrl/api/v3/movie/editor")
+                .header("X-Api-Key", apiKey)
+                .put(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            requesterHttpClient.newCall(req).execute().close()
+            Log.d(TAG, "Filme $movieId marcado como monitorado no Radarr ($baseUrl)")
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Falha ao garantir monitoramento do filme $movieId no Radarr: ${e.message}")
+        }
     }
 
     // =========================================================================
@@ -1061,6 +1083,9 @@ class ContentRequesterService @Inject constructor(
                     continue
                 }
 
+                // Garante que o episódio solicitado e a série estejam monitorados no Sonarr
+                monitorSonarrEpisode(baseUrl, apiKey, seriesId, targetEpisodeId)
+
                 // Dispara busca específica do episódio
                 val cmdBody = JSONObject().apply {
                     put("name", "EpisodeSearch")
@@ -1151,6 +1176,39 @@ class ContentRequesterService @Inject constructor(
                 if (array.length() > 0) array.getJSONObject(0).optInt("id") else null
             }
         } catch (_: Exception) { null }
+    }
+
+    private fun monitorSonarrEpisode(baseUrl: String, apiKey: String, seriesId: Int, episodeId: Int) {
+        try {
+            // Marca o episódio solicitado como monitorado no Sonarr
+            val epPayload = JSONObject().apply {
+                put("episodeIds", JSONArray().put(episodeId))
+                put("monitored", true)
+            }
+            val epReq = Request.Builder()
+                .url("$baseUrl/api/v3/episode/monitor")
+                .header("X-Api-Key", apiKey)
+                .put(epPayload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            requesterHttpClient.newCall(epReq).execute().close()
+            Log.d(TAG, "Episódio $episodeId marcado como monitorado no Sonarr ($baseUrl)")
+
+            // Garante que a série também esteja ativa/monitorada no Sonarr
+            val seriesPayload = JSONObject().apply {
+                put("seriesIds", JSONArray().put(seriesId))
+                put("monitored", true)
+            }
+            val seriesReq = Request.Builder()
+                .url("$baseUrl/api/v3/series/editor")
+                .header("X-Api-Key", apiKey)
+                .put(seriesPayload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            requesterHttpClient.newCall(seriesReq).execute().close()
+            Log.d(TAG, "Série $seriesId garantida como monitorada no Sonarr ($baseUrl)")
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Falha ao garantir monitoramento no Sonarr ($baseUrl): ${e.message}")
+        }
     }
 
     private fun formatBytes(bytes: Long): String {
