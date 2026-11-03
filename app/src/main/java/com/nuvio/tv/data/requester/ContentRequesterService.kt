@@ -80,20 +80,20 @@ class ContentRequesterService @Inject constructor(
     }
 
     /**
-     * Testa e resolve as credenciais do servidor Sonarr ou Radarr.
-     * Suporta:
-     * 1. Login por Usuário e Senha (Web UI Form Login + captura de cookie + extração de apiKey via /initialize.json).
-     * 2. HTTP Basic Auth com Usuário e Senha.
-     * 3. Conexão direta sem autenticação (AuthenticationMethod: None).
-     * 4. API Key direta previamente resolvida.
+     * Tests and resolves credentials for a Sonarr or Radarr server.
+     * Supports:
+     * 1. Username/Password login (Web UI Form Login + cookie handling + apiKey extraction via /initialize.json).
+     * 2. HTTP Basic Auth with Username and Password.
+     * 3. Direct connection without authentication (AuthenticationMethod: None).
+     * 4. Pre-resolved direct API Key.
      *
-     * Retorna a apiKey obtida ou confirmação de sucesso.
+     * Returns the resolved apiKey or confirms connection success.
      */
     suspend fun testAndResolveCredentials(server: RequesterServerConfig): Result<String> = withContext(Dispatchers.IO) {
         val baseUrl = normalizeUrl(server.url)
         if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException(context.getString(R.string.requester_error_invalid_url)))
 
-        // 1. Se já tiver apiKey salva, testa diretamente
+        // 1. If an apiKey is already saved, test directly
         if (server.apiKey.isNotBlank()) {
             val statusReq = Request.Builder()
                 .url("$baseUrl/api/v3/system/status")
@@ -113,7 +113,7 @@ class ContentRequesterService @Inject constructor(
             }
         }
 
-        // 2. Se usuário e senha foram fornecidos: Tenta login via Form (/login)
+        // 2. If username and password were provided: Try form login (/login)
         if (server.username.isNotBlank() || server.password.isNotBlank()) {
             try {
                 val formBody = FormBody.Builder()
@@ -139,7 +139,7 @@ class ContentRequesterService @Inject constructor(
                     return@withContext Result.failure(Exception(context.getString(R.string.requester_error_invalid_credentials)))
                 }
 
-                // 2.1 Endpoint oficial da Web UI com o cookie de sessão: /initialize.json
+                // 2.1 Official Web UI endpoint using session cookie: /initialize.json
                 val initReq = Request.Builder()
                     .url("$baseUrl/initialize.json")
                     .apply {
@@ -159,7 +159,7 @@ class ContentRequesterService @Inject constructor(
                     return@withContext Result.success(initKey)
                 }
 
-                // 2.2 Fallback para /api/v3/config/host com cookie
+                // 2.2 Fallback to /api/v3/config/host with session cookie
                 val hostReq = Request.Builder()
                     .url("$baseUrl/api/v3/config/host")
                     .apply {
@@ -185,7 +185,7 @@ class ContentRequesterService @Inject constructor(
                 Log.w(TAG, "Tentativa de login via /login falhou: ${e.message}")
             }
 
-            // 3. Fallback: Tenta HTTP Basic Auth caso o servidor use Basic
+            // 3. Fallback: Try HTTP Basic Auth in case the server uses Basic authentication
             try {
                 val credentials = Base64.encodeToString(
                     "${server.username.trim()}:${server.password}".toByteArray(),
@@ -232,7 +232,7 @@ class ContentRequesterService @Inject constructor(
             }
         }
 
-        // 4. Sem autenticação (None): tenta obter apiKey de /initialize.json ou /config/host
+        // 4. No authentication (None): attempt to fetch apiKey from /initialize.json or /config/host
         try {
             val initReq = Request.Builder()
                 .url("$baseUrl/initialize.json")
@@ -264,7 +264,7 @@ class ContentRequesterService @Inject constructor(
                 return@withContext Result.success(noneKey)
             }
 
-            // Testa status sem auth
+            // Test system status without authentication
             val statusReq = Request.Builder()
                 .url("$baseUrl/api/v3/system/status")
                 .get()
@@ -289,7 +289,7 @@ class ContentRequesterService @Inject constructor(
         testAndResolveCredentials(server).map { true }
 
     // =========================================================================
-    // RADARR (FILMES)
+    // RADARR (MOVIES)
     // =========================================================================
 
     private fun resolveRadarrMovie(
@@ -425,22 +425,22 @@ class ContentRequesterService @Inject constructor(
             }.awaitAll()
         }
 
-        // 1. Se QUALQUER servidor estiver baixando/importando na fila, mantém Nível 2 com progresso
+        // 1. If ANY server is downloading or importing in queue, keep Level 2 with progress
         val downloading = results.firstOrNull { it is MediaRequesterStatus.Level2Requested && it.progressPercent != null }
         if (downloading != null) return@withContext downloading
 
-        // 2. Se QUALQUER servidor estiver com comando de busca em andamento ou recém-concluído, mantém Nível 2 buscando
+        // 2. If ANY server has an active or recently completed search command, keep Level 2 searching
         val searching = results.firstOrNull { it is MediaRequesterStatus.Level2Requested }
         if (searching != null) return@withContext searching
 
-        // 3. Se TODOS os servidores ativos já têm o arquivo disponível, retorna Nível 3 Disponível
+        // 3. If ALL active servers already have the file available, return Level 3 Available
         if (results.isNotEmpty() && results.all { it is MediaRequesterStatus.Level3Available }) {
             return@withContext results.first()
         }
 
-        // 4. Se pelo menos um servidor já tem o arquivo e nenhum está buscando/baixando:
-        //    - Durante o polling (isPollingActive = true), todos os servidores já finalizaram suas buscas,
-        //      então libera Level3Available.
+        // 4. If at least one server has the file and none are actively searching or downloading:
+        //    - During polling (isPollingActive = true), all servers have completed their searches,
+        //      so release Level3Available.
         val available = results.firstOrNull { it is MediaRequesterStatus.Level3Available }
         if (available != null && isPollingActive) {
             return@withContext available
@@ -520,7 +520,7 @@ class ContentRequesterService @Inject constructor(
                 message = ""
             )
         } else {
-            // Sem arquivo baixado e sem download ativo na fila -> retorna null para mostrar o botão de solicitar
+            // No downloaded file and no active download in queue -> return null to show request button
             null
         }
     }
@@ -546,7 +546,7 @@ class ContentRequesterService @Inject constructor(
             val serverLabel = server.name.ifBlank { "Radarr" }
 
             try {
-                // Checa primeiro se já existe na biblioteca local do Radarr
+                // First check if movie already exists in Radarr's library
                 val existingMovie = resolveRadarrMovie(baseUrl, apiKey, imdbId, tmdbId, title)
                 val existingId = existingMovie?.optInt("id", 0) ?: 0
 
@@ -555,7 +555,7 @@ class ContentRequesterService @Inject constructor(
                         atLeastOneSuccess = true
                         continue
                     }
-                    // Garante que o filme existente esteja marcado como monitorado no Radarr
+                    // Ensure existing movie is marked as monitored in Radarr
                     monitorRadarrMovie(baseUrl, apiKey, existingId)
 
                     val cmdBody = JSONObject().apply {
@@ -581,7 +581,7 @@ class ContentRequesterService @Inject constructor(
                     continue
                 }
 
-                // Não existe no Radarr: faz lookup e adiciona
+                // Movie does not exist in Radarr: perform lookup and add
                 val lookupUrl = when {
                     !tmdbId.isNullOrBlank() -> "$baseUrl/api/v3/movie/lookup/tmdb?tmdbId=$tmdbId"
                     !imdbId.isNullOrBlank() -> "$baseUrl/api/v3/movie/lookup/imdb?imdbId=$imdbId"
@@ -706,7 +706,7 @@ class ContentRequesterService @Inject constructor(
     }
 
     // =========================================================================
-    // SONARR (SÉRIES / EPISÓDIOS)
+    // SONARR (SERIES / EPISODES)
     // =========================================================================
 
     private fun checkSonarrCommands(
@@ -818,22 +818,22 @@ class ContentRequesterService @Inject constructor(
             }.awaitAll()
         }
 
-        // 1. Se QUALQUER servidor estiver baixando/importando na fila, mantém Nível 2 com progresso
+        // 1. If ANY server is downloading or importing in queue, keep Level 2 with progress
         val downloading = results.firstOrNull { it is MediaRequesterStatus.Level2Requested && it.progressPercent != null }
         if (downloading != null) return@withContext downloading
 
-        // 2. Se QUALQUER servidor estiver com comando de busca em andamento ou recém-concluído, mantém Nível 2 buscando
+        // 2. If ANY server has an active or recently completed search command, keep Level 2 searching
         val searching = results.firstOrNull { it is MediaRequesterStatus.Level2Requested }
         if (searching != null) return@withContext searching
 
-        // 3. Se TODOS os servidores ativos já têm o arquivo disponível, retorna Nível 3 Disponível
+        // 3. If ALL active servers already have the file available, return Level 3 Available
         if (results.isNotEmpty() && results.all { it is MediaRequesterStatus.Level3Available }) {
             return@withContext results.first()
         }
 
-        // 4. Se pelo menos um servidor já tem o arquivo e nenhum está buscando/baixando:
-        //    - Durante o polling (isPollingActive = true), todos os servidores já finalizaram suas buscas,
-        //      então libera Level3Available.
+        // 4. If at least one server has the file and none are actively searching or downloading:
+        //    - During polling (isPollingActive = true), all servers have completed their searches,
+        //      so release Level3Available.
         val available = results.firstOrNull { it is MediaRequesterStatus.Level3Available }
         if (available != null && isPollingActive) {
             return@withContext available
@@ -939,7 +939,7 @@ class ContentRequesterService @Inject constructor(
                                 message = ""
                             )
                         } else {
-                            // Sem arquivo local e sem download na fila -> retorna null para checar outros servidores
+                            // No local file and no download in queue -> return null to check other servers
                             null
                         }
                     }
@@ -1038,7 +1038,7 @@ class ContentRequesterService @Inject constructor(
                     wasJustAdded = true
                 }
 
-                // Busca o ID específico do episódio com retentativa se a série acabou de ser adicionada
+                // Look up specific episode ID with retry if series was just added
                 var targetEpisodeId: Int? = null
                 val maxAttempts = if (wasJustAdded) 8 else 1
 
@@ -1074,7 +1074,7 @@ class ContentRequesterService @Inject constructor(
                 }
 
                 if (targetEpisodeId == -1) {
-                    // Arquivo já existe neste servidor, não precisa disparar EpisodeSearch
+                    // File already exists on this server, no need to trigger EpisodeSearch
                     continue
                 }
 
@@ -1083,10 +1083,10 @@ class ContentRequesterService @Inject constructor(
                     continue
                 }
 
-                // Garante que o episódio solicitado e a série estejam monitorados no Sonarr
+                // Ensure requested episode and series are monitored in Sonarr
                 monitorSonarrEpisode(baseUrl, apiKey, seriesId, targetEpisodeId)
 
-                // Dispara busca específica do episódio
+                // Trigger specific episode search
                 val cmdBody = JSONObject().apply {
                     put("name", "EpisodeSearch")
                     put("episodeIds", JSONArray().put(targetEpisodeId))
@@ -1180,7 +1180,7 @@ class ContentRequesterService @Inject constructor(
 
     private fun monitorSonarrEpisode(baseUrl: String, apiKey: String, seriesId: Int, episodeId: Int) {
         try {
-            // Marca o episódio solicitado como monitorado no Sonarr
+            // Mark requested episode as monitored in Sonarr
             val epPayload = JSONObject().apply {
                 put("episodeIds", JSONArray().put(episodeId))
                 put("monitored", true)
@@ -1193,7 +1193,7 @@ class ContentRequesterService @Inject constructor(
             requesterHttpClient.newCall(epReq).execute().close()
             Log.d(TAG, "Episódio $episodeId marcado como monitorado no Sonarr ($baseUrl)")
 
-            // Garante que a série também esteja ativa/monitorada no Sonarr
+            // Ensure the series is also active/monitored in Sonarr
             val seriesPayload = JSONObject().apply {
                 put("seriesIds", JSONArray().put(seriesId))
                 put("monitored", true)

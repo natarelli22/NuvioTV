@@ -89,13 +89,13 @@ fun MediaRequesterPanel(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Linha Principal de Informações e Ação
+            // Main info and action row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
             ) {
-                // Ícone Indicador
+                // Status indicator icon
                 when (status) {
                     is MediaRequesterStatus.Checking -> {
                         CircularProgressIndicator(
@@ -148,7 +148,7 @@ fun MediaRequesterPanel(
                     MediaRequesterStatus.Disabled -> {}
                 }
 
-                // Textos de Status
+                // Status texts
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
@@ -199,7 +199,7 @@ fun MediaRequesterPanel(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    // Barra de progresso para Level 2 se processando
+                    // Progress bar for Level 2 when downloading or searching
                     if (status is MediaRequesterStatus.Level2Requested && status.progressPercent != null) {
                         Spacer(modifier = Modifier.height(3.dp))
                         LinearProgressIndicator(
@@ -214,7 +214,7 @@ fun MediaRequesterPanel(
                     }
                 }
 
-                // Botão de Ação (Level 1 ou Retry no Level 3 Unavailable)
+                // Action button (Level 1 Request or Retry on Level 3 Unavailable)
                 val showActionButton = status is MediaRequesterStatus.Level1NotRequested ||
                     (status is MediaRequesterStatus.Level3Unavailable && status.canRetry)
 
@@ -260,7 +260,7 @@ fun MediaRequesterPanel(
                 }
             }
 
-            // Stepper com as 3 bolinhas (o-o-o): Servidor, Solicitação, Disponibilidade
+            // 3-step progress indicator (o-o-o): Server, Request, Availability
             val dots = status.dots
             if (dots.isNotEmpty()) {
                 RequesterStepperRow(dots = dots)

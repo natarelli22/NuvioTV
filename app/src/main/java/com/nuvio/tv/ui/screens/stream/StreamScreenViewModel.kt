@@ -2271,7 +2271,7 @@ class StreamScreenViewModel @Inject constructor(
                 return@launch
             }
 
-            // Aguarda deterministicamente a busca no servidor de mídia local (compartilha o mesmo cache em voo do ServerMatcher)
+            // Deterministically await local media server check (shares in-flight cache with ServerMatcher)
             val localServerSources = serverStreams.sources(contentType, videoId, epSeason, epNumber, forceRefresh = false)
             val foundOnLocalServer = localServerSources.any { source ->
                 try {

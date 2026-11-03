@@ -94,7 +94,7 @@ sealed class MediaRequesterStatus {
 
     open val dots: List<RequesterDot> get() = emptyList()
 
-    /** Nível 1: Mídia ainda não solicitada no Sonarr/Radarr */
+    /** Level 1: Media not yet requested in Sonarr/Radarr */
     data class Level1NotRequested(
         val serverName: String,
         val serverDot: RequesterDot = RequesterDot(RequesterDotColor.GREEN, labelRes = R.string.requester_stepper_server),
@@ -104,7 +104,7 @@ sealed class MediaRequesterStatus {
         override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
     }
 
-    /** Nível 2: Conteúdo Solicitado (Buscando releases ou Baixando) */
+    /** Level 2: Content requested (Searching releases or Downloading) */
     data class Level2Requested(
         val serverName: String,
         val phaseDescription: String = "",
@@ -121,7 +121,7 @@ sealed class MediaRequesterStatus {
         override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
     }
 
-    /** Nível 3: Conteúdo Disponível na biblioteca */
+    /** Level 3: Content available in library */
     data class Level3Available(
         val serverName: String,
         val message: String = "",
@@ -132,7 +132,7 @@ sealed class MediaRequesterStatus {
         override val dots: List<RequesterDot> get() = listOf(serverDot, requestDot, availabilityDot)
     }
 
-    /** Nível 3: Conteúdo Indisponível ou Falha */
+    /** Level 3: Content unavailable or request failed */
     data class Level3Unavailable(
         val serverName: String,
         val message: String = "",

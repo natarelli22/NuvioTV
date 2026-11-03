@@ -198,7 +198,7 @@ internal fun MediaServerSettingsContent(
                             expanded = serverRequesterConfig.isSectionVisible,
                             onToggle = { viewModel.toggleServerContentRequesterVisibility(connection.id) }
                         ) {
-                            // SONARR (SÉRIES)
+                            // SONARR (SERIES)
                             SettingsToggleRow(
                                 title = stringResource(R.string.requester_sonarr_title),
                                 subtitle = stringResource(R.string.requester_sonarr_description),
@@ -224,7 +224,7 @@ internal fun MediaServerSettingsContent(
 
                             Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
 
-                            // RADARR (FILMES)
+                            // RADARR (MOVIES)
                             SettingsToggleRow(
                                 title = stringResource(R.string.requester_radarr_title),
                                 subtitle = stringResource(R.string.requester_radarr_description),
