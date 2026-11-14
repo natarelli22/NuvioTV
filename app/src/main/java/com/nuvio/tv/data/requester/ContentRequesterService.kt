@@ -1011,6 +1011,7 @@ class ContentRequesterService @Inject constructor(
                     seriesPayload.put("rootFolderPath", rootFolder)
                     seriesPayload.put("qualityProfileId", qualityProfileId)
                     seriesPayload.put("addOptions", JSONObject().apply {
+                        put("monitor", "none")
                         put("searchForMissingEpisodes", false)
                     })
 
